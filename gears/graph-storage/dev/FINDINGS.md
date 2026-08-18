@@ -270,3 +270,57 @@ Four consequences worth stating plainly:
   hop is a join. That is why multi-hop chain patterns explode on hubs, and why
   variable-length quantifiers are absent in PostgreSQL 19 — variable depth
   cannot expand into a fixed number of joins.
+
+## F11 — the undirected shorthand is a 2350x trap, and the tenant predicate is not symmetric
+
+Two measurements taken while building the typed pattern builder. Both change
+what the builder is allowed to express, so both are recorded rather than left
+as folklore.
+
+### `(a)-[e]-(b)` is not shorthand, it is a full scan
+
+The spike already said the undirected shorthand "plans as an all-vertex probe".
+The size of that on real data was not measured until now. Same seed, same 10
+rows:
+
+| pattern | plan | execution |
+|---|---|---|
+| `(a)-[e]-(b)` | Parallel Seq Scan on `graph_edge` | 734.9 ms |
+| two directed patterns, `UNION` | two index scans on `idx_graph_edge_src` / `_dst` | 0.312 ms |
+
+So the builder has no undirected variant at all. [`Direction`] offers
+`Outgoing` and `Incoming`; an undirected hop is two patterns. The convenience
+form is not a slower way to write the same thing — it is a different query.
+
+### Either endpoint predicate fences the tenant; neither is optional
+
+For a one-hop pattern seeded by id, measured on the stand:
+
+| tenant predicate | foreign tenant sees | own tenant sees |
+|---|---|---|
+| source endpoint only | 0 | 2 |
+| target endpoint only | 0 | 2 |
+| none | **2** | 2 |
+
+Either endpoint alone anchors the walk, because composite element keys tie both
+ends of an edge to one tenant. What is not optional is having a predicate at
+all: with none, a caller who names an id reads whichever tenant owns it.
+
+The consequence for testing is that no execution test can detect the loss of
+*one* of the two predicates — both mutations pass the stand suite. The builder
+emits both anyway (one bound value, no plan change, and it stays correct if the
+element keys ever stop carrying `tenant_id`), and the guard for that redundancy
+is a unit test on the emitted text rather than a behavioural one.
+
+### What the builder guarantees
+
+Nothing reaching the pattern text is a caller string. Identifiers come from
+closed enums (`Graph`, `Label`, `Var`, `Property`, `Output`); values are bound;
+a frontier of any size binds as **one** parameter (`= ANY($n::bigint[])`), so
+the statement text does not vary with the number of seeds; and the tenant is a
+constructor argument rather than a predicate the caller may omit. Verified by
+mutation: dropping both tenant predicates makes a foreign tenant read 2 rows,
+rendering both directions with the same arrow makes the two directions return
+the same set, and moving the edge-type restriction to the wrong variable fails
+the emitted-SQL assertion.
+
