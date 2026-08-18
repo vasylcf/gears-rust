@@ -324,3 +324,57 @@ rendering both directions with the same arrow makes the two directions return
 the same set, and moving the edge-type restriction to the wrong variable fails
 the emitted-SQL assertion.
 
+## F12 — a graph pattern does not have to express the whole scope
+
+The `GRAPH_TABLE` hop is scoped in two layers, and deciding which layer owns
+what turned out to be the substance of the work rather than a detail.
+
+**The pattern is a candidate producer.** It carries the caller's tenant bound
+and returns node ids. Those ids are then authorized by an ordinary scoped query
+through the secure ORM, which applies the caller's whole `AccessScope`. So the
+free-form half of the statement cannot do more than propose candidates, and the
+security-critical half stays where the platform already enforces it:
+
+```sql
+SELECT "graph_node"."id" FROM "graph_node"
+WHERE "graph_node"."tenant_id" IN (...)              -- secure ORM, whole scope
+  AND "id" IN (
+    SELECT "neighbour" FROM GRAPH_TABLE(... ->  ...) AS "g_out"
+    UNION
+    SELECT "neighbour" FROM GRAPH_TABLE(... <-  ...) AS "g_in")
+```
+
+**So a scope narrower than a tenant needs no expression in the pattern.** A
+resource-id list or a group subtree makes the pattern over-produce; the outer
+query removes the surplus. Wasteful, never unsafe. Because the walk authorizes
+between hops, an unauthorized node never enters the next frontier either, so the
+walk cannot pass *through* territory the caller cannot see.
+
+**What must be expressible is the tenant bound**, because losing it is the one
+failure that leaks (F10). `tenant_bound` therefore refuses rather than
+approximates:
+
+| scope | outcome | why |
+|---|---|---|
+| `deny_all` | empty answer | unambiguous, no statement sent |
+| `for_tenant` / `for_tenants` | tenant list | enumerable |
+| tenant filter plus a narrower filter | tenant list | the narrower filter is the outer query's job |
+| `allow_all` | **refused** | no upper bound on tenants |
+| resource-only scope | **refused** | same |
+| any constraint without a tenant filter | **refused** | constraints are OR-ed, so one unbounded constraint unbounds the scope |
+| `InTenantSubtree` | **refused** | members live in the closure table; assuming the root would silently narrow |
+
+Refusing an unbounded scope is not defensive coding here: `allow_all` is a real
+scope the platform produces, and serving it through a pattern would read every
+tenant.
+
+**Measured guarantees, each verified by mutation.** Making the unbounded case
+fail open is caught by two unit tests and the stand suite; dropping the outer
+query's scope is caught by a text assertion; and replacing the union with
+`id IN (out) OR id IN (inc)` is caught by the single-semi-join assertion, which
+is the F9 trap arriving in a second backend.
+
+The stand suite also checks that the SQL/PGQ hop and the two-query hop return
+**the same ids** for the same seeds and scope, which is what makes the choice
+between them a configuration detail rather than a behavioural one.
+

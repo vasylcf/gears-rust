@@ -9,3 +9,4 @@ pub mod migrations;
 pub mod pgq;
 pub mod traversal;
 pub mod traversal_experiment;
+pub mod traversal_pgq;

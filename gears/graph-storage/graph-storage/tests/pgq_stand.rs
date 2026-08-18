@@ -21,6 +21,9 @@
 use sea_orm::{ConnectionTrait, Database, Statement};
 
 use cf_gears_graph_storage::infra::storage::pgq::{Direction, hop_statement};
+use cf_gears_graph_storage::infra::storage::traversal::expand_frontier;
+use cf_gears_graph_storage::infra::storage::traversal_pgq::expand_frontier_pgq;
+use toolkit_db::secure::AccessScope;
 
 /// Tenant the stand seeds under `auth_disabled`, where every request runs as
 /// the platform's default tenant.
@@ -38,7 +41,7 @@ async fn the_built_pattern_executes_on_postgres_19() {
 
     // A seed with no outgoing edges is still a valid answer: the point is that
     // the statement parses, plans and runs, not that the fixture has data.
-    let (sql, values) = hop_statement(&[5000], tenant, Direction::Outgoing, None);
+    let (sql, values) = hop_statement(&[5000], vec![tenant], Direction::Outgoing, None);
     let rows = db
         .query_all_raw(Statement::from_sql_and_values(
             db.get_database_backend(),
@@ -68,7 +71,7 @@ async fn a_foreign_tenant_sees_nothing() {
 
     let (sql, values) = hop_statement(
         &[5000],
-        uuid::Uuid::from_u128(0xdead),
+        vec![uuid::Uuid::from_u128(0xdead)],
         Direction::Outgoing,
         None,
     );
@@ -143,12 +146,12 @@ async fn the_two_directions_traverse_different_edges() {
 
     let out = run(
         &db,
-        hop_statement(&[5000], tenant, Direction::Outgoing, None),
+        hop_statement(&[5000], vec![tenant], Direction::Outgoing, None),
     )
     .await;
     let inc = run(
         &db,
-        hop_statement(&[5000], tenant, Direction::Incoming, None),
+        hop_statement(&[5000], vec![tenant], Direction::Incoming, None),
     )
     .await;
 
@@ -200,7 +203,112 @@ async fn neighbours(
 ) -> Vec<i64> {
     run(
         db,
-        hop_statement(frontier, tenant, Direction::Outgoing, edge_types),
+        hop_statement(frontier, vec![tenant], Direction::Outgoing, edge_types),
     )
     .await
+}
+
+// ── the scoped hop: GRAPH_TABLE as a candidate producer ────────────────────
+
+/// The scoped hop must agree with the two-query hop the gear ships. Same seeds,
+/// same scope, same answer — otherwise the SQL/PGQ backend is not a drop-in for
+/// the port and the choice between them stops being a configuration detail.
+#[tokio::test]
+async fn the_scoped_pgq_hop_agrees_with_the_two_query_hop() {
+    let Some(db) = stand_db().await else { return };
+    let conn = db.conn().expect("conn");
+    let scope = AccessScope::for_tenant(uuid::Uuid::parse_str(STAND_TENANT).unwrap());
+
+    for seed in [5000_i64, 1000, 2259, 42] {
+        let pgq = expand_frontier_pgq(&conn, &scope, &[seed], None)
+            .await
+            .expect("pgq hop");
+        let two = expand_frontier(&conn, &scope, &[seed], None)
+            .await
+            .expect("two-query hop");
+
+        assert_eq!(pgq, two, "the two backends disagreed on seed {seed}");
+    }
+}
+
+/// Values must survive the trip through the secure ORM. The pattern's
+/// parameters live inside a `FROM` source nested in a subquery, which is the
+/// part of the composition most likely to drop them silently.
+#[tokio::test]
+async fn the_scoped_hop_binds_its_pattern_values() {
+    let Some(db) = stand_db().await else { return };
+    let conn = db.conn().expect("conn");
+    let scope = AccessScope::for_tenant(uuid::Uuid::parse_str(STAND_TENANT).unwrap());
+
+    let many = expand_frontier_pgq(&conn, &scope, &[5000, 1000, 2259], None)
+        .await
+        .expect("pgq hop");
+
+    let mut apart = Vec::new();
+    for seed in [5000_i64, 1000, 2259] {
+        apart.extend(
+            expand_frontier_pgq(&conn, &scope, &[seed], None)
+                .await
+                .expect("pgq hop"),
+        );
+    }
+    apart.sort_unstable();
+    apart.dedup();
+
+    assert_eq!(
+        many, apart,
+        "the frontier parameter did not reach the pattern"
+    );
+}
+
+/// A scope whose tenants cannot be enumerated is refused, not approximated.
+/// `allow_all` is the case that matters: a pattern built from it would carry no
+/// tenant bound at all.
+#[tokio::test]
+async fn an_unbounded_scope_is_refused() {
+    let Some(db) = stand_db().await else { return };
+    let conn = db.conn().expect("conn");
+
+    let refused = expand_frontier_pgq(&conn, &AccessScope::allow_all(), &[5000], None).await;
+    assert!(
+        refused.is_err(),
+        "an unbounded scope was served instead of refused: {refused:?}"
+    );
+
+    let denied = expand_frontier_pgq(&conn, &AccessScope::deny_all(), &[5000], None)
+        .await
+        .expect("deny-all is an empty answer, not an error");
+    assert!(denied.is_empty(), "deny-all returned rows: {denied:?}");
+}
+
+/// The pattern is bounded to the caller's tenant, so a scope for a tenant that
+/// owns nothing sees nothing even when it names ids that exist elsewhere.
+#[tokio::test]
+async fn a_foreign_scope_sees_nothing_through_the_hop() {
+    let Some(db) = stand_db().await else { return };
+    let conn = db.conn().expect("conn");
+    let foreign = AccessScope::for_tenant(uuid::Uuid::from_u128(0xdead));
+
+    let rows = expand_frontier_pgq(&conn, &foreign, &[5000, 1000, 2259], None)
+        .await
+        .expect("pgq hop");
+
+    assert!(rows.is_empty(), "a foreign scope saw {rows:?}");
+}
+
+async fn stand_db() -> Option<toolkit_db::secure::Db> {
+    let Ok(dsn) = std::env::var("GRAPH_STAND_DSN") else {
+        eprintln!("GRAPH_STAND_DSN unset - skipping the stand execution check");
+        return None;
+    };
+    let opts = toolkit_db::ConnectOpts {
+        max_conns: Some(2),
+        min_conns: Some(1),
+        ..Default::default()
+    };
+    Some(
+        toolkit_db::connect_db(&dsn, opts)
+            .await
+            .expect("connect to the stand"),
+    )
 }

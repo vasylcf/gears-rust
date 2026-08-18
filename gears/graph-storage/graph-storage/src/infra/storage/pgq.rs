@@ -83,6 +83,7 @@
 use sea_orm::Value;
 use sea_orm::sea_query::{Alias, Expr, Func, IntoIden, TableRef};
 use std::borrow::Cow;
+use toolkit_security::AccessScope;
 
 /// A property graph declared by this gear's migrations.
 ///
@@ -160,6 +161,16 @@ pub enum Direction {
 }
 
 impl Direction {
+    /// Alias the `FROM` source carries, distinct per direction so both can
+    /// appear in one statement.
+    #[must_use]
+    pub const fn alias(self) -> &'static str {
+        match self {
+            Self::Outgoing => "g_out",
+            Self::Incoming => "g_in",
+        }
+    }
+
     const fn arrow(self) -> (&'static str, &'static str) {
         match self {
             Self::Outgoing => ("-", "->"),
@@ -220,6 +231,8 @@ pub enum IdList {
     BigInt(Vec<i64>),
     /// `integer` identifiers — interned type keys.
     Int(Vec<i32>),
+    /// `uuid` identifiers — tenants.
+    Uuid(Vec<uuid::Uuid>),
 }
 
 impl IdList {
@@ -227,6 +240,7 @@ impl IdList {
         match self {
             Self::BigInt(_) => "::bigint[]",
             Self::Int(_) => "::int[]",
+            Self::Uuid(_) => "::uuid[]",
         }
     }
 
@@ -238,6 +252,13 @@ impl IdList {
         let joined = match self {
             Self::BigInt(v) => v.iter().map(i64::to_string).collect::<Vec<_>>().join(","),
             Self::Int(v) => v.iter().map(i32::to_string).collect::<Vec<_>>().join(","),
+            // A `Uuid` formats as hex and dashes, so no other character can
+            // reach the literal.
+            Self::Uuid(v) => v
+                .iter()
+                .map(uuid::Uuid::to_string)
+                .collect::<Vec<_>>()
+                .join(","),
         };
         format!("{{{joined}}}")
     }
@@ -246,6 +267,7 @@ impl IdList {
         match self {
             Self::BigInt(v) => v.is_empty(),
             Self::Int(v) => v.is_empty(),
+            Self::Uuid(v) => v.is_empty(),
         }
     }
 }
@@ -272,19 +294,25 @@ pub enum Restriction {
 pub struct Pattern {
     graph: Graph,
     direction: Direction,
-    tenant: uuid::Uuid,
+    tenants: Vec<uuid::Uuid>,
     restrictions: Vec<Restriction>,
     outputs: Vec<(Var, Property, Output)>,
 }
 
 impl Pattern {
-    /// Begin a one-hop pattern in `direction`, scoped to `tenant`.
+    /// Begin a one-hop pattern in `direction`, restricted to `tenants`.
+    ///
+    /// The tenant set is a constructor argument rather than a predicate the
+    /// caller may add, so a pattern that reaches every tenant cannot be built.
+    /// An empty set is accepted and renders a predicate that matches nothing —
+    /// the honest rendering of "this caller may see no tenant" — but callers
+    /// should not reach the database at all in that case.
     #[must_use]
-    pub fn hop(graph: Graph, direction: Direction, tenant: uuid::Uuid) -> Self {
+    pub fn hop(graph: Graph, direction: Direction, tenants: Vec<uuid::Uuid>) -> Self {
         Self {
             graph,
             direction,
-            tenant,
+            tenants,
             restrictions: Vec::new(),
             outputs: Vec::new(),
         }
@@ -317,7 +345,8 @@ impl Pattern {
         // The tenant occupies the first slot, so every restriction that follows
         // numbers from there. `$n` references this array by position; see the
         // module docs on what `sea_query` does with a repeated reference.
-        let mut values: Vec<Value> = vec![Value::from(self.tenant)];
+        let mut values: Vec<Value> =
+            vec![Value::from(IdList::Uuid(self.tenants.clone()).literal())];
         let tenant_slot = values.len();
 
         let restrictions: String = self
@@ -359,7 +388,8 @@ impl Pattern {
 
         let body = format!(
             "{graph} MATCH ({source} IS {node}){left}[{edge} IS {edge_label}]{right}({target} IS {node}) \
-             WHERE {source}.{tenant} = ${tenant_slot} AND {target}.{tenant} = ${tenant_slot}\
+             WHERE {source}.{tenant} = ANY(${tenant_slot}::uuid[]) \
+             AND {target}.{tenant} = ANY(${tenant_slot}::uuid[])\
              {restrictions} COLUMNS ({columns})",
             graph = self.graph.as_str(),
             source = Var::Source.as_str(),
@@ -405,13 +435,13 @@ pub fn graph_table_source(
 #[must_use]
 pub fn hop_statement(
     frontier: &[i64],
-    tenant: uuid::Uuid,
+    tenants: Vec<uuid::Uuid>,
     direction: Direction,
     edge_types: Option<&[i32]>,
 ) -> (String, sea_orm::Values) {
     use sea_orm::sea_query::{PostgresQueryBuilder, Query};
 
-    let mut pattern = Pattern::hop(Graph::Kb, direction, tenant)
+    let mut pattern = Pattern::hop(Graph::Kb, direction, tenants)
         .restrict(Var::Source, Property::Id, IdList::BigInt(frontier.to_vec()))
         .project(Var::Target, Property::Id, Output::Neighbour);
 
@@ -432,7 +462,7 @@ mod tests {
     use uuid::Uuid;
 
     fn hop(frontier: &[i64], tenant: Uuid) -> String {
-        hop_statement(frontier, tenant, Direction::Outgoing, None).0
+        hop_statement(frontier, vec![tenant], Direction::Outgoing, None).0
     }
 
     /// `Func::Custom` must render the name unquoted. `GRAPH_TABLE(...)` parses;
@@ -460,7 +490,7 @@ mod tests {
     #[test]
     fn values_are_bound_not_interpolated() {
         let tenant = Uuid::from_u128(0x5eed);
-        let (sql, values) = hop_statement(&[5000, 6000], tenant, Direction::Outgoing, None);
+        let (sql, values) = hop_statement(&[5000, 6000], vec![tenant], Direction::Outgoing, None);
 
         assert!(
             !sql.contains(&tenant.to_string()),
@@ -489,7 +519,7 @@ mod tests {
         );
         let (_, values) = hop_statement(
             &(1..=500).collect::<Vec<_>>(),
-            tenant,
+            vec![tenant],
             Direction::Outgoing,
             None,
         );
@@ -511,11 +541,11 @@ mod tests {
         let sql = hop(&[1], Uuid::nil());
 
         assert!(
-            sql.contains("a.tenant_id ="),
+            sql.contains("a.tenant_id = ANY("),
             "seed endpoint unscoped: {sql}"
         );
         assert!(
-            sql.contains("b.tenant_id ="),
+            sql.contains("b.tenant_id = ANY("),
             "target endpoint unscoped: {sql}"
         );
     }
@@ -526,10 +556,11 @@ mod tests {
     /// the wire — pinned because it determines every later slot number.
     #[test]
     fn each_placeholder_occurrence_binds_its_own_copy() {
-        let (sql, values) = hop_statement(&[1], Uuid::nil(), Direction::Outgoing, None);
+        let (sql, values) = hop_statement(&[1], vec![Uuid::nil()], Direction::Outgoing, None);
 
         assert!(
-            sql.contains("a.tenant_id = $1") && sql.contains("b.tenant_id = $2"),
+            sql.contains("a.tenant_id = ANY($1::uuid[])")
+                && sql.contains("b.tenant_id = ANY($2::uuid[])"),
             "unexpected placeholder numbering: {sql}"
         );
         assert_eq!(
@@ -538,8 +569,8 @@ mod tests {
             "one occurrence per endpoint plus the frontier: {values:?}"
         );
         assert!(
-            matches!(values.0.first(), Some(Value::Uuid(_))),
-            "the first bound value should be the tenant: {values:?}"
+            matches!(values.0.first(), Some(Value::String(_))),
+            "the tenant set binds as one array literal: {values:?}"
         );
     }
 
@@ -548,8 +579,8 @@ mod tests {
     /// 734.9 ms against 0.312 ms for the two directed patterns unioned.
     #[test]
     fn both_directions_render_explicit_arrows() {
-        let out = hop_statement(&[1], Uuid::nil(), Direction::Outgoing, None).0;
-        let inc = hop_statement(&[1], Uuid::nil(), Direction::Incoming, None).0;
+        let out = hop_statement(&[1], vec![Uuid::nil()], Direction::Outgoing, None).0;
+        let inc = hop_statement(&[1], vec![Uuid::nil()], Direction::Incoming, None).0;
 
         assert!(
             out.contains("(a IS node)-[e IS edge]->(b IS node)"),
@@ -565,7 +596,8 @@ mod tests {
     /// matching array type, so `type_id` is compared as `int` and not `bigint`.
     #[test]
     fn an_edge_type_restriction_targets_the_edge_variable() {
-        let (sql, values) = hop_statement(&[1], Uuid::nil(), Direction::Outgoing, Some(&[2, 3]));
+        let (sql, values) =
+            hop_statement(&[1], vec![Uuid::nil()], Direction::Outgoing, Some(&[2, 3]));
 
         assert!(
             sql.contains("e.type_id = ANY($4::int[])"),
@@ -611,5 +643,218 @@ mod tests {
         assert_eq!(name(&graph_edge::Column::TypeId), Property::TypeId.as_str());
         let _ = graph_edge::Column::SrcNodeId.as_column_ref();
         let _ = graph_edge::Column::DstNodeId.as_column_ref();
+    }
+}
+
+// ── Deriving a pattern's tenant set from a caller's scope ──────────────────
+
+/// Why a scope cannot be carried into a graph pattern.
+///
+/// Both variants mean the same thing operationally: refuse the request rather
+/// than run a pattern that is not tenant-bounded. They are distinguished
+/// because they call for different fixes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum UnsupportedScope {
+    /// A constraint names no tenant at all, so the pattern would have no upper
+    /// bound on which tenants it reads. `allow_all` is the obvious case.
+    #[error("scope constraint carries no tenant filter, so a graph pattern cannot be bounded")]
+    NoTenantBound,
+    /// A constraint bounds tenants through the tenant closure table
+    /// (`InTenantSubtree`). Enumerating it needs a query the pattern cannot
+    /// contain, and guessing the subtree would be a silent widening.
+    #[error("tenant-subtree scopes are not expressible in a graph pattern")]
+    TenantSubtree,
+}
+
+/// What a caller's scope permits a pattern to read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TenantBound {
+    /// The scope permits nothing; no statement should be sent.
+    Nothing,
+    /// The pattern may read these tenants.
+    These(Vec<uuid::Uuid>),
+}
+
+/// Derive the tenant set a graph pattern may read, or refuse.
+///
+/// # What this does and does not enforce
+///
+/// The pattern is a **candidate producer**: whatever it returns is authorized
+/// afterwards by an ordinary scoped query through the secure ORM. So a scope
+/// that is narrower than a tenant — a resource-id list, a group subtree — does
+/// not have to be expressible here. Ignoring such a filter makes the pattern
+/// return more candidates than the caller may see, and the outer query removes
+/// them. That is wasteful, never unsafe.
+///
+/// What must be expressible is the **tenant** bound, because losing it is the
+/// one failure that leaks: a pattern with no tenant predicate returns rows of
+/// whichever tenant owns the ids it is given (`dev/FINDINGS.md (F10)`). So a
+/// scope whose tenants cannot be enumerated is refused rather than approximated.
+///
+/// Because constraints are OR-ed, **every** constraint must contribute a tenant
+/// bound. One unbounded constraint makes the whole scope unbounded.
+///
+/// # Errors
+/// Returns [`UnsupportedScope`] when the tenant set cannot be enumerated.
+pub fn tenant_bound(scope: &AccessScope) -> Result<TenantBound, UnsupportedScope> {
+    use toolkit_security::access_scope::{ScopeFilter, pep_properties};
+
+    if scope.is_deny_all() {
+        return Ok(TenantBound::Nothing);
+    }
+    if scope.is_unconstrained() {
+        return Err(UnsupportedScope::NoTenantBound);
+    }
+
+    let mut tenants: Vec<uuid::Uuid> = Vec::new();
+    for constraint in scope.constraints() {
+        let mut bounded = false;
+        for filter in constraint.filters() {
+            if filter.property() != pep_properties::OWNER_TENANT_ID {
+                continue;
+            }
+            match filter {
+                ScopeFilter::Eq(_) | ScopeFilter::In(_) => {
+                    let ids = filter.uuid_values();
+                    if ids.is_empty() {
+                        // A tenant filter carrying no usable value bounds
+                        // nothing; treating it as a bound would be the silent
+                        // widening this function exists to prevent.
+                        continue;
+                    }
+                    tenants.extend(ids);
+                    bounded = true;
+                }
+                ScopeFilter::InTenantSubtree(_) => return Err(UnsupportedScope::TenantSubtree),
+                ScopeFilter::InGroup(_) | ScopeFilter::InGroupSubtree(_) => {}
+            }
+        }
+        if !bounded {
+            return Err(UnsupportedScope::NoTenantBound);
+        }
+    }
+
+    tenants.sort_unstable();
+    tenants.dedup();
+    if tenants.is_empty() {
+        return Ok(TenantBound::Nothing);
+    }
+    Ok(TenantBound::These(tenants))
+}
+
+#[cfg(test)]
+mod scope_tests {
+    use super::*;
+    use toolkit_security::access_scope::{ScopeConstraint, ScopeFilter, pep_properties};
+    use uuid::Uuid;
+
+    fn tenant_filter(id: Uuid) -> ScopeFilter {
+        ScopeFilter::in_uuids(pep_properties::OWNER_TENANT_ID, vec![id])
+    }
+
+    fn resource_filter(id: Uuid) -> ScopeFilter {
+        ScopeFilter::in_uuids(pep_properties::RESOURCE_ID, vec![id])
+    }
+
+    /// A scope that permits nothing is an empty answer, not a refusal: there is
+    /// no ambiguity about what the caller may see.
+    #[test]
+    fn deny_all_yields_nothing() {
+        assert_eq!(
+            tenant_bound(&AccessScope::deny_all()),
+            Ok(TenantBound::Nothing)
+        );
+    }
+
+    /// `allow_all` is the case the refusal exists for. A pattern built from it
+    /// would carry no tenant bound, which is precisely the leak.
+    #[test]
+    fn allow_all_is_refused() {
+        assert_eq!(
+            tenant_bound(&AccessScope::allow_all()),
+            Err(UnsupportedScope::NoTenantBound)
+        );
+    }
+
+    #[test]
+    fn tenant_scopes_are_enumerated_and_deduplicated() {
+        let a = Uuid::from_u128(1);
+        let b = Uuid::from_u128(2);
+
+        assert_eq!(
+            tenant_bound(&AccessScope::for_tenant(a)),
+            Ok(TenantBound::These(vec![a]))
+        );
+
+        let TenantBound::These(mut both) =
+            tenant_bound(&AccessScope::for_tenants(vec![b, a, b])).expect("bounded")
+        else {
+            panic!("expected a tenant list")
+        };
+        both.sort_unstable();
+        assert_eq!(both, vec![a, b]);
+    }
+
+    /// A filter narrower than a tenant does not have to be expressible: the
+    /// pattern over-produces and the outer scoped query removes the surplus.
+    /// What matters is that the tenant bound survives alongside it.
+    #[test]
+    fn a_narrower_filter_alongside_a_tenant_is_ignored_not_refused() {
+        let tenant = Uuid::from_u128(7);
+        let scope = AccessScope::single(ScopeConstraint::new(vec![
+            tenant_filter(tenant),
+            resource_filter(Uuid::from_u128(99)),
+        ]));
+
+        assert_eq!(tenant_bound(&scope), Ok(TenantBound::These(vec![tenant])));
+    }
+
+    /// A scope with no tenant filter at all cannot bound the pattern, even
+    /// though it is perfectly enforceable by the secure ORM.
+    #[test]
+    fn a_resource_only_scope_is_refused() {
+        let scope = AccessScope::for_resources(vec![Uuid::from_u128(99)]);
+        assert_eq!(tenant_bound(&scope), Err(UnsupportedScope::NoTenantBound));
+    }
+
+    /// Constraints are OR-ed, so one unbounded constraint makes the whole scope
+    /// unbounded. Taking the union of the bounded ones would silently drop the
+    /// rows the unbounded constraint permits.
+    #[test]
+    fn one_unbounded_constraint_refuses_the_whole_scope() {
+        let scope = AccessScope::from_constraints(vec![
+            ScopeConstraint::new(vec![tenant_filter(Uuid::from_u128(1))]),
+            ScopeConstraint::new(vec![resource_filter(Uuid::from_u128(99))]),
+        ]);
+
+        assert_eq!(tenant_bound(&scope), Err(UnsupportedScope::NoTenantBound));
+    }
+
+    /// A tenant subtree names its members through the closure table. The
+    /// pattern cannot contain that query, and assuming the subtree is just its
+    /// root would silently narrow the answer.
+    #[test]
+    fn a_tenant_subtree_scope_is_refused() {
+        let scope =
+            AccessScope::single(ScopeConstraint::new(vec![ScopeFilter::in_tenant_subtree(
+                pep_properties::OWNER_TENANT_ID,
+                Uuid::from_u128(1),
+                true,
+                Vec::new(),
+            )]));
+
+        assert_eq!(tenant_bound(&scope), Err(UnsupportedScope::TenantSubtree));
+    }
+
+    /// A tenant filter carrying no values bounds nothing, so it must not count
+    /// as a bound.
+    #[test]
+    fn an_empty_tenant_filter_does_not_count_as_a_bound() {
+        let scope = AccessScope::single(ScopeConstraint::new(vec![ScopeFilter::in_uuids(
+            pep_properties::OWNER_TENANT_ID,
+            vec![],
+        )]));
+
+        assert_eq!(tenant_bound(&scope), Err(UnsupportedScope::NoTenantBound));
     }
 }
