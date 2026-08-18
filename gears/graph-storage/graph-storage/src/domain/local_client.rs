@@ -7,7 +7,9 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use graph_storage_sdk::{GraphStats, GraphStorageClientV1, GraphStorageError};
+use graph_storage_sdk::{
+    EdgeInput, GraphStats, GraphStorageClientV1, GraphStorageError, IngestResult, NodeInput,
+};
 use toolkit_security::SecurityContext;
 
 use crate::domain::service::GraphServices;
@@ -29,5 +31,23 @@ impl GraphStorageLocalClient {
 impl GraphStorageClientV1 for GraphStorageLocalClient {
     async fn stats(&self, ctx: &SecurityContext) -> Result<GraphStats, GraphStorageError> {
         Ok(self.services.stats(ctx).await?)
+    }
+
+    async fn ingest(
+        &self,
+        ctx: &SecurityContext,
+        nodes: &[NodeInput],
+        edges: &[EdgeInput],
+    ) -> Result<IngestResult, GraphStorageError> {
+        Ok(self.services.ingest(ctx, nodes, edges).await?)
+    }
+
+    async fn register_type(
+        &self,
+        ctx: &SecurityContext,
+        type_id: &str,
+        kind: &str,
+    ) -> Result<i32, GraphStorageError> {
+        Ok(self.services.register_type(ctx, type_id, kind).await?)
     }
 }

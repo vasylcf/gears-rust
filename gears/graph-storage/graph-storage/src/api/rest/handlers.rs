@@ -8,8 +8,11 @@ use serde::Deserialize;
 use toolkit_canonical_errors::CanonicalError;
 use toolkit_security::SecurityContext;
 
-use crate::api::rest::dto::{GraphStatsDto, NeighboursDto};
+use crate::api::rest::dto::{
+    GraphStatsDto, IngestReq, IngestResultDto, NeighboursDto, RegisterTypeReq, RegisteredTypeDto,
+};
 use crate::domain::service::GraphServices;
+use graph_storage_sdk::{EdgeInput, NodeInput};
 
 /// Handler result alias.
 pub type ApiResult<T> = Result<T, CanonicalError>;
@@ -56,4 +59,53 @@ pub async fn get_neighbours(
     let truncated = nodes.len() >= budget;
 
     Ok(Json(NeighboursDto { nodes, truncated }))
+}
+
+/// Register a GTS type for the caller's tenant.
+#[tracing::instrument(skip(services, ctx, body), fields(user.id = %ctx.subject_id()))]
+pub async fn register_type(
+    Extension(ctx): Extension<SecurityContext>,
+    Extension(services): Extension<Arc<GraphServices>>,
+    Json(body): Json<RegisterTypeReq>,
+) -> ApiResult<Json<RegisteredTypeDto>> {
+    let id = services
+        .register_type(&ctx, &body.type_id, &body.kind)
+        .await?;
+    Ok(Json(RegisteredTypeDto { id }))
+}
+
+/// Upsert a batch of nodes and edges.
+#[tracing::instrument(
+    skip(services, ctx, body),
+    fields(user.id = %ctx.subject_id(), nodes = body.nodes.len(), edges = body.edges.len())
+)]
+pub async fn ingest(
+    Extension(ctx): Extension<SecurityContext>,
+    Extension(services): Extension<Arc<GraphServices>>,
+    Json(body): Json<IngestReq>,
+) -> ApiResult<Json<IngestResultDto>> {
+    let nodes: Vec<NodeInput> = body
+        .nodes
+        .into_iter()
+        .map(|n| NodeInput {
+            node_key: n.node_key,
+            type_id: n.type_id,
+            name: n.name,
+        })
+        .collect();
+    let edges: Vec<EdgeInput> = body
+        .edges
+        .into_iter()
+        .map(|e| EdgeInput {
+            type_id: e.type_id,
+            from: e.from,
+            to: e.to,
+        })
+        .collect();
+
+    let result = services.ingest(&ctx, &nodes, &edges).await?;
+    Ok(Json(IngestResultDto {
+        nodes_upserted: result.nodes_upserted,
+        edges_upserted: result.edges_upserted,
+    }))
 }

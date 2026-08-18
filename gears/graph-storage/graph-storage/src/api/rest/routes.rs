@@ -73,5 +73,48 @@ pub fn register_routes(
         .error_500(openapi)
         .register(router, openapi);
 
+    let router = OperationBuilder::post(format!("{BASE}/types"))
+        .operation_id("graph_storage.register_type")
+        .summary("Register a GTS type")
+        .description("Intern a node or edge type so ingested rows can reference it")
+        .tag(API_TAG)
+        .authenticated()
+        .require_license_features::<License>([])
+        .json_request::<dto::RegisterTypeReq>(openapi, "Type to register")
+        .handler(handlers::register_type)
+        .json_response_with_schema::<dto::RegisteredTypeDto>(
+            openapi,
+            http::StatusCode::OK,
+            "Interned type id",
+        )
+        .error_400(openapi)
+        .error_401(openapi)
+        .error_403(openapi)
+        .error_500(openapi)
+        .register(router, openapi);
+
+    let router = OperationBuilder::post(format!("{BASE}/ingest"))
+        .operation_id("graph_storage.ingest")
+        .summary("Upsert nodes and edges")
+        .description(
+            "Batch upsert keyed on tenant-scoped natural keys, so repeating an \
+             identical batch converges instead of duplicating",
+        )
+        .tag(API_TAG)
+        .authenticated()
+        .require_license_features::<License>([])
+        .json_request::<dto::IngestReq>(openapi, "Nodes and edges to upsert")
+        .handler(handlers::ingest)
+        .json_response_with_schema::<dto::IngestResultDto>(
+            openapi,
+            http::StatusCode::OK,
+            "Counts of upserted rows",
+        )
+        .error_400(openapi)
+        .error_401(openapi)
+        .error_403(openapi)
+        .error_500(openapi)
+        .register(router, openapi);
+
     router.layer(Extension(services))
 }
