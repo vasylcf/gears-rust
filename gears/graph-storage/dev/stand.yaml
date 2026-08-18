@@ -1,0 +1,37 @@
+# Development stand for the graph-storage gear.
+#
+# Authentication is disabled: every request receives a root security context.
+# This is a local experimentation stand only — never a deployment template.
+
+server:
+  home_dir: "~/.cf-gears-graph-storage"
+
+logging:
+  default:
+    console_level: info
+
+gears:
+  api-gateway:
+    config:
+      bind_addr: "127.0.0.1:8099"
+      enable_docs: true
+      cors_enabled: true
+      auth_disabled: true
+      require_auth_by_default: false
+      openapi:
+        title: "Graph Storage Dev Stand"
+        version: "0.1.0"
+        description: "Local stand for graph-storage gear experiments"
+      defaults:
+        body_limit_bytes: 33554432
+        rate_limit:
+          rps: 1000
+          burst: 200
+          in_flight: 64
+
+  graph-storage:
+    config:
+      ingest_max_nodes: 10000
+      ingest_max_edges: 20000
+      traversal_max_depth: 5
+      traversal_max_nodes: 1000

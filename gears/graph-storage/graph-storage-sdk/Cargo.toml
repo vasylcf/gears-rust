@@ -1,0 +1,17 @@
+[package]
+name = "cf-gears-graph-storage-sdk"
+version = "0.1.0"
+publish = false
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "SDK for the graph-storage gear: client trait, models, GTS constants"
+
+[lints]
+workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+toolkit-canonical-errors = { workspace = true }
+toolkit-gts = { workspace = true }
+toolkit-security = { workspace = true }

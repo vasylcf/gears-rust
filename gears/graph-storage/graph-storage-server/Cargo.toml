@@ -1,0 +1,39 @@
+[package]
+name = "graph-storage-server"
+version = "0.1.0"
+publish = false
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Standalone development server for the graph-storage gear"
+
+[lints]
+workspace = true
+
+[features]
+default = []
+fips = ["toolkit/fips"]
+
+[dependencies]
+toolkit = { workspace = true, features = ["bootstrap"] }
+
+# Minimum system gears required to serve an authenticated REST surface
+api_gateway = { package = "cf-gears-api-gateway", path = "../../system/api-gateway" }
+grpc_hub = { package = "cf-gears-grpc-hub", path = "../../system/grpc-hub" }
+types_registry = { package = "cf-gears-types-registry", path = "../../system/types-registry/types-registry" }
+authn-resolver = { package = "cf-gears-authn-resolver", path = "../../system/authn-resolver/authn-resolver" }
+authz-resolver = { package = "cf-gears-authz-resolver", path = "../../system/authz-resolver/authz-resolver" }
+tenant-resolver = { package = "cf-gears-tenant-resolver", path = "../../system/tenant-resolver/tenant-resolver" }
+
+# Static plugins so the stand runs without external identity infrastructure
+static-authn-plugin = { package = "cf-gears-static-authn-plugin", path = "../../system/authn-resolver/plugins/static-authn-plugin" }
+static-authz-plugin = { package = "cf-gears-static-authz-plugin", path = "../../system/authz-resolver/plugins/static-authz-plugin" }
+single-tenant-tr-plugin = { package = "cf-gears-single-tenant-tr-plugin", path = "../../system/tenant-resolver/plugins/single-tenant-tr-plugin" }
+
+# Target gear
+graph-storage = { package = "cf-gears-graph-storage", path = "../graph-storage" }
+
+anyhow = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+clap = { workspace = true }
