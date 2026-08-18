@@ -18,6 +18,6 @@ pub async fn get_stats(
     Extension(ctx): Extension<SecurityContext>,
     Extension(services): Extension<Arc<GraphServices>>,
 ) -> ApiResult<Json<GraphStatsDto>> {
-    let stats = services.stats(&ctx)?;
+    let stats = services.stats(&ctx).await?;
     Ok(Json(GraphStatsDto::from(stats)))
 }

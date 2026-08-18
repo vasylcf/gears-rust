@@ -14,6 +14,7 @@ struct GraphResourceError;
 impl From<DomainError> for CanonicalError {
     fn from(err: DomainError) -> Self {
         match err {
+            DomainError::Storage(_) => GraphResourceError::unknown(err.to_string()).create(),
             DomainError::NotInitialised => GraphResourceError::failed_precondition()
                 .with_precondition_violation(
                     "graph-storage",

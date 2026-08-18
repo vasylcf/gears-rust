@@ -11,4 +11,7 @@ pub enum DomainError {
     /// The gear is not fully initialised yet.
     #[error("graph-storage service is not initialised")]
     NotInitialised,
+    /// A storage operation failed.
+    #[error("storage failure: {0}")]
+    Storage(String),
 }

@@ -6,6 +6,16 @@
 server:
   home_dir: "~/.cf-gears-graph-storage"
 
+# Global connection template shared by the gears of this stand.
+database:
+  servers:
+    pg_stand:
+      engine: "postgres"
+      dsn: "postgres://graph:graph@127.0.0.1:55433/graph?sslmode=disable"
+      pool:
+        max_conns: 8
+        acquire_timeout: "30s"
+
 logging:
   default:
     console_level: info
@@ -30,6 +40,8 @@ gears:
           in_flight: 64
 
   graph-storage:
+    database:
+      server: "pg_stand"
     config:
       ingest_max_nodes: 10000
       ingest_max_edges: 20000

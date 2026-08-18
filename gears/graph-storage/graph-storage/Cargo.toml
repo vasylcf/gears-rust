@@ -35,3 +35,9 @@ toolkit-canonical-errors = { workspace = true, features = ["axum", "utoipa"] }
 toolkit-security = { workspace = true }
 toolkit-macros = { workspace = true }
 thiserror = { workspace = true }
+time = { workspace = true }
+uuid = { workspace = true }
+sea-orm = { workspace = true }
+sea-orm-migration = { workspace = true }
+toolkit-db = { workspace = true, features = ["pg"] }
+toolkit-db-macros = { workspace = true }

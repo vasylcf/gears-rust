@@ -28,6 +28,6 @@ impl GraphStorageLocalClient {
 #[async_trait]
 impl GraphStorageClientV1 for GraphStorageLocalClient {
     async fn stats(&self, ctx: &SecurityContext) -> Result<GraphStats, GraphStorageError> {
-        Ok(self.services.stats(ctx)?)
+        Ok(self.services.stats(ctx).await?)
     }
 }

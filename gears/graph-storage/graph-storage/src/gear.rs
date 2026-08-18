@@ -4,7 +4,8 @@ use std::sync::{Arc, OnceLock};
 
 use async_trait::async_trait;
 use toolkit::api::OpenApiRegistry;
-use toolkit::{Gear, GearCtx, RestApiCapability};
+use toolkit::{DatabaseCapability, Gear, GearCtx, RestApiCapability};
+use toolkit_db::{DBProvider, DbError};
 use tracing::{debug, info};
 
 use graph_storage_sdk::GraphStorageClientV1;
@@ -15,7 +16,7 @@ use crate::domain::local_client::GraphStorageLocalClient;
 use crate::domain::service::GraphServices;
 
 /// The graph-storage gear.
-#[toolkit::gear(name = "graph-storage", capabilities = [rest])]
+#[toolkit::gear(name = "graph-storage", capabilities = [db, rest])]
 pub struct GraphStorage {
     services: OnceLock<Arc<GraphServices>>,
 }
@@ -38,7 +39,11 @@ impl Gear for GraphStorage {
             "loaded graph-storage config"
         );
 
-        let services = Arc::new(GraphServices::new(cfg));
+        // Acquiring the database capability is what makes the platform run
+        // this gear's migrations before the REST phase.
+        let db: Arc<DBProvider<DbError>> = Arc::new(ctx.db_required()?);
+
+        let services = Arc::new(GraphServices::new(cfg, db));
 
         self.services
             .set(services.clone())
@@ -51,6 +56,13 @@ impl Gear for GraphStorage {
 
         info!("graph-storage gear initialized");
         Ok(())
+    }
+}
+
+impl DatabaseCapability for GraphStorage {
+    fn migrations(&self) -> Vec<Box<dyn sea_orm_migration::MigrationTrait>> {
+        use sea_orm_migration::MigratorTrait;
+        crate::infra::storage::migrations::Migrator::migrations()
     }
 }
 
