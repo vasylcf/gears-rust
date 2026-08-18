@@ -163,8 +163,8 @@ pub async fn expand_frontier_cte<C: DBRunner>(
     // `OR`: the `OR` form costs a sequential scan of `graph_node`. See
     // `cte_columns_union` and `dev/FINDINGS.md (F9)`.
     let endpoint_ids = cte_columns_union("scoped_edges", "src_node_id", &["dst_node_id"]);
-    let endpoints = sea_orm::Condition::all()
-        .add(Expr::col(graph_node::Column::Id).in_subquery(endpoint_ids));
+    let endpoints =
+        sea_orm::Condition::all().add(Expr::col(graph_node::Column::Id).in_subquery(endpoint_ids));
 
     let mut ids: Vec<i64> = graph_node::Entity::find()
         .secure()

@@ -204,3 +204,69 @@ loopback, so the extra round trip itself is nearly free (~0.05 ms); on a
 Conclusion for the toolkit-db discussion: a safe CTE primitive is worth having,
 but the case for it is **tail latency and payload volume on wide frontiers**,
 not per-hop overhead. Correctness never depended on it — see F1.
+
+## F10 — SQL/PGQ needs no `sea_query` patch, and PGQ is a catalog rewrite
+
+Reaching `GRAPH_TABLE` from Rust looked like it required forking `sea_query` to
+add an AST node for it. It does not. Three existing pieces compose:
+
+- `TableRef::FunctionCall` puts a call in the `FROM` clause;
+- `Func::Custom` renders the name **raw and unquoted**
+  (`sea-query-1.0.2/src/backend/query_builder.rs:768`) — load-bearing, because
+  `GRAPH_TABLE(...)` parses and `"GRAPH_TABLE"(...)` is a syntax error;
+- `Expr::cust_with_values` renders arbitrary text while **binding** its values.
+
+Composed, they emit exactly the statement the stand executes:
+
+```sql
+SELECT "neighbour" FROM GRAPH_TABLE(kb_pgq
+  MATCH (a IS node)-[e IS edge]->(b IS node)
+  WHERE a.id = $1 AND a.tenant_id = $2 AND b.tenant_id = $3
+  COLUMNS (b.id AS neighbour)) AS "g"
+```
+
+Both guarantees are pinned by tests and were verified to fail when broken:
+quoting the construct name makes PostgreSQL reject the statement, and dropping
+the tenant predicate makes a foreign tenant read **2 rows** it does not own.
+
+So the obstacle to SQL/PGQ is not `sea_query`. It is that `Expr::cust` is raw
+SQL, which gear code may not write — a policy question whose answer is that the
+construct belongs inside `toolkit-db`, where the platform CTE policy already
+exempts dialect-specific assembly (the outbox writer precedent).
+
+### What `CREATE PROPERTY GRAPH` actually is
+
+Read off the stand's catalogs, because the "it works like a view" summary is
+close but misleading in the part that matters.
+
+A property graph is a relation with **no storage**: `relkind = 'g'`,
+`relnatts = 0`. Like a view it occupies a name in `pg_class` and holds no rows.
+Unlike a view — which stores one query's parse tree in `pg_rewrite` — it stores
+structured metadata across five catalogs. Ours holds:
+
+| alias | table | kind | key | srckey → srcref | destkey → destref |
+|---|---|---|---|---|---|
+| graph_node | graph_node | v | {1,2} | | |
+| graph_edge | graph_edge | e | {1,2} | {1,5} → {1,2} | {1,6} → {1,2} |
+
+Those are `attnum`s: `{1,2}` is `(tenant_id, id)`, `{1,5}` is
+`(tenant_id, src_node_id)`. The catalog records the join, nothing more.
+
+`GRAPH_TABLE` is expanded at parse analysis into that join. The one-hop pattern
+plans as `graph_node ⋈ graph_edge ⋈ graph_node` with
+`Index Cond: (tenant_id = graph_edge.tenant_id AND id = graph_edge.dst_node_id)`
+— a tenant equality nobody wrote, derived from the composite element keys.
+
+Four consequences worth stating plainly:
+
+- **The abstraction is free at runtime.** After expansion it is an ordinary
+  plan: same indexes, same statistics, same `EXPLAIN`, same RLS.
+- **There is no second store.** No dual write, no sync, no drift. Recreating the
+  property graph is a catalog operation.
+- **The tenant join is structural**, not written by us — but it only stops an
+  edge from *reaching* a foreign node. A pattern with no tenant predicate still
+  *returns* every tenant's rows, which the mutation above demonstrates.
+- **It is not a graph engine.** No adjacency list, no traversal operator; every
+  hop is a join. That is why multi-hop chain patterns explode on hubs, and why
+  variable-length quantifiers are absent in PostgreSQL 19 — variable depth
+  cannot expand into a fixed number of joins.

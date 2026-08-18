@@ -6,5 +6,6 @@ pub mod counts;
 pub mod entity;
 pub mod ingest_repo;
 pub mod migrations;
+pub mod pgq;
 pub mod traversal;
 pub mod traversal_experiment;
