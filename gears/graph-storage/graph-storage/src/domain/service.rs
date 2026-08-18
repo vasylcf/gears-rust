@@ -12,7 +12,7 @@ use toolkit_security::{AccessScope, SecurityContext};
 
 use crate::config::{GraphStorageConfig, HopStrategy};
 use crate::domain::error::DomainError;
-use crate::infra::storage::{counts, ingest_repo, traversal};
+use crate::infra::storage::{counts, ingest_repo, pgq, traversal, traversal_pgq};
 
 /// Composition of all domain services used by the gear.
 pub struct GraphServices {
@@ -177,6 +177,11 @@ impl GraphServices {
             .conn()
             .map_err(|e| DomainError::Storage(e.to_string()))?;
 
+        // Resolved once for the whole walk rather than per hop: the scope does
+        // not change between hops, and a per-hop decision would log the same
+        // fallback once per level.
+        let hop = Self::effective_hop(self.config.traversal_hop, &scope);
+
         let mut visited: Vec<i64> = seeds.to_vec();
         visited.sort_unstable();
         visited.dedup();
@@ -186,12 +191,15 @@ impl GraphServices {
             if frontier.is_empty() || visited.len() >= budget {
                 break;
             }
-            let neighbours = match self.config.traversal_hop {
+            let neighbours = match hop {
                 HopStrategy::TwoQuery => {
                     traversal::expand_frontier(&conn, &scope, &frontier, None).await?
                 }
                 HopStrategy::Cte => {
                     traversal::expand_frontier_cte(&conn, &scope, &frontier, None).await?
+                }
+                HopStrategy::Pgq => {
+                    traversal_pgq::expand_frontier_pgq(&conn, &scope, &frontier, None).await?
                 }
             };
             frontier = neighbours
@@ -205,5 +213,92 @@ impl GraphServices {
 
         visited.truncate(budget);
         Ok(visited)
+    }
+}
+
+impl GraphServices {
+    /// Which hop implementation actually serves a request under `scope`.
+    ///
+    /// The `GRAPH_TABLE` backend needs the caller's scope reduced to a set of
+    /// tenants, because a pattern with no tenant bound reads whichever tenant
+    /// owns the ids it is given. Not every scope reduces that way — `allow_all`
+    /// and tenant-subtree scopes do not — and those requests are served by the
+    /// two-query hop instead of being refused.
+    ///
+    /// Falling back rather than refusing is the port's existing contract, not a
+    /// concession: ADR-0001 already has the port choosing a backend per request
+    /// shape, and the stand suite pins that both backends return the same ids
+    /// for the same seeds and scope. What the fallback must not do is happen
+    /// quietly — a deployment configured for `pgq` and silently served by
+    /// `two_query` would make any measurement taken from it meaningless — so it
+    /// is logged with the reason.
+    fn effective_hop(configured: HopStrategy, scope: &AccessScope) -> HopStrategy {
+        if configured != HopStrategy::Pgq {
+            return configured;
+        }
+        match pgq::tenant_bound(scope) {
+            Ok(_) => HopStrategy::Pgq,
+            Err(reason) => {
+                tracing::warn!(
+                    %reason,
+                    "scope cannot bound a graph pattern; serving this request with the two-query hop"
+                );
+                HopStrategy::TwoQuery
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod hop_selection_tests {
+    use super::*;
+    use uuid::Uuid;
+
+    /// A scope the pattern can bound is served by the configured backend.
+    #[test]
+    fn a_tenant_scope_keeps_the_pgq_hop() {
+        let scope = AccessScope::for_tenant(Uuid::from_u128(1));
+        assert_eq!(
+            GraphServices::effective_hop(HopStrategy::Pgq, &scope),
+            HopStrategy::Pgq
+        );
+    }
+
+    /// A scope with no tenant bound falls back rather than failing the request.
+    #[test]
+    fn an_unbounded_scope_falls_back_to_the_two_query_hop() {
+        assert_eq!(
+            GraphServices::effective_hop(HopStrategy::Pgq, &AccessScope::allow_all()),
+            HopStrategy::TwoQuery
+        );
+    }
+
+    /// The fallback is specific to the pattern backend. The other two express
+    /// any scope the secure ORM can, so nothing about them is conditional.
+    #[test]
+    fn the_other_backends_are_never_substituted() {
+        for configured in [HopStrategy::TwoQuery, HopStrategy::Cte] {
+            for scope in [
+                AccessScope::allow_all(),
+                AccessScope::deny_all(),
+                AccessScope::for_tenant(Uuid::from_u128(1)),
+            ] {
+                assert_eq!(
+                    GraphServices::effective_hop(configured, &scope),
+                    configured,
+                    "{configured:?} was substituted"
+                );
+            }
+        }
+    }
+
+    /// `deny_all` reduces to "no tenants", which the pattern renders honestly
+    /// as a predicate matching nothing. It is not a reason to fall back.
+    #[test]
+    fn deny_all_does_not_trigger_the_fallback() {
+        assert_eq!(
+            GraphServices::effective_hop(HopStrategy::Pgq, &AccessScope::deny_all()),
+            HopStrategy::Pgq
+        );
     }
 }

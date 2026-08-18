@@ -378,3 +378,47 @@ The stand suite also checks that the SQL/PGQ hop and the two-query hop return
 **the same ids** for the same seeds and scope, which is what makes the choice
 between them a configuration detail rather than a behavioural one.
 
+## F13 — three backends, one answer, and SQL/PGQ is not the slow one
+
+With `HopStrategy::Pgq` behind the port, all three hop implementations run on
+the same stand and the same fixture (199 004 nodes / 599 999 edges, hub-skewed,
+40 fixed seeds, debug build, end-to-end over HTTP):
+
+| depth | two scoped queries | scoped CTE | `GRAPH_TABLE` |
+|---|---|---|---|
+| 1 | p50 4.1 / p95 4.9 ms | p50 3.3 / p95 3.9 ms | p50 3.8 / p95 4.4 ms |
+| 2 | p50 7.0 / p95 10.5 ms | p50 4.5 / p95 5.1 ms | p50 5.8 / p95 6.5 ms |
+| 3 | p50 13.8 / p95 49.6 ms | p50 8.1 / p95 29.7 ms | p50 10.8 / p95 36.2 ms |
+
+**All three return byte-identical results across all 120 requests**, and the
+cross-tenant trap fixture holds on each: depth 1 from the trapped seed yields
+`{1,2}`, depth 2 yields `{1,2,3}`.
+
+This corrects the expectation the earlier spike set. At the SQL level a single
+`GRAPH_TABLE` hop measured about 1.7x the plain-SQL shape (0.65 ms against
+0.37 ms), which read as "PGQ is the slow option". End to end it is not: the
+pattern is *one statement*, so it beats the two-query hop by roughly a quarter
+at depth 3, and trails the CTE hop by about 20 %. The earlier per-hop number was
+comparing a single statement against a single query, not against the round trip
+the two-query hop actually pays.
+
+So the ranking on this fixture is CTE, then PGQ, then two-query — and the gap
+between the top two is small enough that ADR-0001's reason for preferring
+SQL/PGQ for fixed-depth shapes (composition and declarativity, not speed)
+survives contact with the measurement rather than being contradicted by it.
+
+### The port falls back rather than refusing
+
+A `GRAPH_TABLE` pattern must be bounded to a set of tenants (F12), and not every
+scope reduces to one. Rather than fail those requests, `effective_hop` resolves
+the backend once per request and serves an unbounded scope with the two-query
+hop, logging the reason at `warn`.
+
+Falling back is the port's existing contract rather than a concession —
+ADR-0001 already has the port choosing a backend per request shape, and the
+identical-results check above is what makes the substitution invisible to
+callers. What it must not be is quiet: a deployment configured for `pgq` and
+silently served by `two_query` would make any measurement taken from it
+meaningless, so the log names the reason. The benchmark above was taken with
+that log confirmed empty.
+

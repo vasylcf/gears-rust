@@ -15,6 +15,13 @@ pub enum HopStrategy {
     TwoQuery,
     /// One statement with a scoped CTE over the edge table.
     Cte,
+    /// One statement with a `GRAPH_TABLE` pattern per direction, unioned.
+    ///
+    /// Requires `PostgreSQL` 19 with the property graph the migrations create.
+    /// A pattern must be bounded to a set of tenants, so a request whose scope
+    /// cannot be enumerated into one is served by [`HopStrategy::TwoQuery`]
+    /// instead; see `GraphServices::effective_hop`.
+    Pgq,
 }
 
 /// Configuration of the graph-storage gear.
@@ -29,9 +36,10 @@ pub struct GraphStorageConfig {
     pub traversal_max_depth: u8,
     /// Default node budget of a traversal response.
     pub traversal_max_nodes: u32,
-    /// Hop execution strategy: `two_query` (works on stock toolkit-db) or
-    /// `cte` (one statement, requires safe CTE support). Present so the two
-    /// can be measured against each other on the same data.
+    /// Hop execution strategy: `two_query` (works on stock toolkit-db), `cte`
+    /// (one statement, requires safe CTE support), or `pgq` (one statement per
+    /// direction through `GRAPH_TABLE`, requires `PostgreSQL` 19). Present so
+    /// they can be measured against each other on the same data.
     pub traversal_hop: HopStrategy,
 }
 
