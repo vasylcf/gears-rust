@@ -4,6 +4,7 @@
 
 pub mod counts;
 pub mod entity;
+pub mod hybrid;
 pub mod ingest_repo;
 pub mod migrations;
 pub mod pgq;

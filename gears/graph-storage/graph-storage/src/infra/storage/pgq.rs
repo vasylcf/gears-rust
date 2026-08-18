@@ -246,9 +246,10 @@ impl IdList {
 
     /// Render as a `PostgreSQL` array literal, e.g. `{1,2,3}`.
     ///
-    /// Only integers reach this string, so it cannot carry SQL: the values are
-    /// formatted from `i64`/`i32`, never from text.
-    fn literal(&self) -> String {
+    /// Only integers and UUIDs reach this string, so it cannot carry SQL: the
+    /// values are formatted from `i64`/`i32`/`Uuid`, never from text.
+    #[must_use]
+    pub fn literal(&self) -> String {
         let joined = match self {
             Self::BigInt(v) => v.iter().map(i64::to_string).collect::<Vec<_>>().join(","),
             Self::Int(v) => v.iter().map(i32::to_string).collect::<Vec<_>>().join(","),
@@ -272,6 +273,38 @@ impl IdList {
     }
 }
 
+/// A sibling `FROM` item a pattern may correlate against.
+///
+/// `PostgreSQL` 19 rejects subqueries inside `GRAPH_TABLE`, so a pattern cannot
+/// compute its own seeds. What it *can* do is reference a column of another
+/// `FROM` item in the same statement — an implicit lateral through a comma
+/// join. That is the only way a set computed elsewhere in the statement, such
+/// as a vector nearest-neighbour search, can drive a pattern.
+///
+/// Closed, like every other identifier here: the alias and the column are ours,
+/// never the caller's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Source {
+    /// Seeds produced by a nearest-neighbour search, keyed by node id.
+    KnnSeeds,
+}
+
+impl Source {
+    /// Alias the sibling `FROM` item carries.
+    #[must_use]
+    pub const fn alias(self) -> &'static str {
+        match self {
+            Self::KnnSeeds => "knn_seeds",
+        }
+    }
+
+    const fn column(self) -> &'static str {
+        match self {
+            Self::KnnSeeds => "id",
+        }
+    }
+}
+
 /// A restriction on the pattern, beyond the mandatory tenant predicate.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Restriction {
@@ -283,6 +316,16 @@ pub enum Restriction {
         property: Property,
         /// The identifiers to match.
         ids: IdList,
+    },
+    /// `<var>.<property> = <source>.<column>` — a correlated reference to a
+    /// sibling `FROM` item.
+    EqualsSource {
+        /// Which pattern variable the property belongs to.
+        var: Var,
+        /// Which column of that variable.
+        property: Property,
+        /// The sibling item to correlate against.
+        source: Source,
     },
 }
 
@@ -326,6 +369,18 @@ impl Pattern {
         self
     }
 
+    /// Correlate a property of a pattern variable against a sibling `FROM`
+    /// item, so the pattern runs once per row of that item.
+    #[must_use]
+    pub fn correlate(mut self, var: Var, property: Property, source: Source) -> Self {
+        self.restrictions.push(Restriction::EqualsSource {
+            var,
+            property,
+            source,
+        });
+        self
+    }
+
     /// Project a property of a pattern variable as `output`.
     #[must_use]
     pub fn project(mut self, var: Var, property: Property, output: Output) -> Self {
@@ -352,24 +407,36 @@ impl Pattern {
         let restrictions: String = self
             .restrictions
             .iter()
-            .filter_map(|restriction| {
-                let Restriction::AnyOf { var, property, ids } = restriction;
-                // An empty list would render `= ANY('{}')`, which is valid but
-                // silently matches nothing, while dropping the clause would
-                // silently match everything. Neither is a safe default, so an
-                // empty restriction is not built: the traversal backend returns
-                // early on an empty frontier instead.
-                if ids.is_empty() {
-                    return None;
+            .filter_map(|restriction| match restriction {
+                Restriction::AnyOf { var, property, ids } => {
+                    // An empty list would render `= ANY('{}')`, which is valid
+                    // but silently matches nothing, while dropping the clause
+                    // would silently match everything. Neither is a safe
+                    // default, so an empty restriction is not built: the
+                    // traversal backend returns early on an empty frontier.
+                    if ids.is_empty() {
+                        return None;
+                    }
+                    values.push(Value::from(ids.literal()));
+                    let slot = values.len();
+                    Some(format!(
+                        " AND {}.{} = ANY(${slot}{})",
+                        var.as_str(),
+                        property.as_str(),
+                        ids.cast(),
+                    ))
                 }
-                values.push(Value::from(ids.literal()));
-                let slot = values.len();
-                Some(format!(
-                    " AND {}.{} = ANY(${slot}{})",
+                Restriction::EqualsSource {
+                    var,
+                    property,
+                    source,
+                } => Some(format!(
+                    " AND {}.{} = {}.{}",
                     var.as_str(),
                     property.as_str(),
-                    ids.cast(),
-                ))
+                    source.alias(),
+                    source.column(),
+                )),
             })
             .collect();
 

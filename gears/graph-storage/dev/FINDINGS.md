@@ -422,3 +422,89 @@ silently served by `two_query` would make any measurement taken from it
 meaningless, so the log names the reason. The benchmark above was taken with
 that log confirmed empty.
 
+## F14 — hybrid retrieval in one statement, and the one syntax that allows it
+
+The point of SQL/PGQ for this gear was never hop latency (F13 put it second of
+three). It was composition: vector search, graph expansion and full text in a
+single statement, which no arrangement of scoped entity queries can produce.
+That now runs.
+
+### The obvious shape does not work
+
+Seeding a pattern from a CTE is rejected outright:
+
+```text
+ERROR:  subqueries within GRAPH_TABLE reference are not supported
+```
+
+`IN (SELECT ...)`, `= ANY(ARRAY(SELECT ...))` and `CROSS JOIN LATERAL
+GRAPH_TABLE (...)` are all refused — the last with a bare syntax error, since
+`LATERAL` is not accepted before the construct. A pattern therefore cannot
+compute its own seeds.
+
+What does work is a **comma join with a correlated reference** — an implicit
+lateral:
+
+```sql
+FROM (SELECT id FROM graph_node ORDER BY embedding <=> $q LIMIT $k) AS knn_seeds,
+     GRAPH_TABLE (kb_pgq MATCH (a IS node)-[e IS edge]->(b IS node)
+       WHERE a.id = knn_seeds.id AND a.tenant_id = ANY($t) AND b.tenant_id = ANY($t)
+       COLUMNS (b.id AS neighbour)) AS g_out
+```
+
+That single syntactic fact is what makes single-statement hybrid retrieval
+possible on this release at all, so it is pinned by a test rather than left as
+a comment. `Pattern::correlate` is the only way to build it, and `Source` keeps
+the sibling alias inside the closed vocabulary.
+
+### The whole composition
+
+Seeds by cosine distance, one hop out of each in both directions, the reached
+nodes filtered by full text and ranked by distance — one statement, one plan:
+
+```
+Limit
+  Sort  (Sort Key: embedding <=> $q)
+    Nested Loop
+      Nested Loop
+        Nested Loop
+          Limit
+            Index Scan using idx_graph_node_embedding   <- HNSW
+          Index Only Scan using graph_node_pkey
+        Index Scan using idx_graph_edge_src
+      Index Scan using graph_node_pkey
+Execution Time: 8.101 ms
+```
+
+Every stage is index-driven, including the HNSW probe.
+
+### What the single statement buys
+
+Against the same answer assembled from three round trips (KNN, then hop, then
+filter and rank), 25 runs each, ids verified identical every time:
+
+| | p50 | p95 | max |
+|---|---|---|---|
+| single statement | 11.0 ms | 15.1 ms | 21.7 ms |
+| three round trips | 14.1 ms | 18.9 ms | 26.6 ms |
+
+About 20 % on loopback, where a round trip is ~0.05 ms. The number is the
+smaller half of the argument. The larger half is that the intermediate frontier
+— up to fifty seeds and everything one hop from them — never crosses the process
+boundary, and the planner sees the whole shape at once instead of three
+unrelated statements. On a network with real latency the gap widens; and the
+comparison is generous to the decomposed path, which uses the SQL/PGQ hop for
+its middle step. Without SQL/PGQ at all it would be four round trips.
+
+### Scoping is unchanged
+
+The same two layers as the plain hop (F12): the seed search and the pattern are
+candidate producers carrying the caller's tenant bound, the outer query is an
+ordinary scoped secure-ORM select applying the whole `AccessScope`. A foreign
+tenant sees nothing, checked on the stand.
+
+Indexes moved out of ad-hoc DDL into `m20260818_000004_search_indexes`. The GIN
+index is built on `to_tsvector('simple', search_text)` and the query reads the
+configuration name from the same constant: a mismatch there would still return
+correct rows and silently stop using the index.
+
