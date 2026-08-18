@@ -104,6 +104,7 @@
 
 // Gear declarations
 mod cond;
+pub(crate) mod cte;
 mod db;
 mod db_ops;
 pub mod docs;
@@ -147,6 +148,9 @@ pub use tx_error::{InfraError, TxError};
 
 // Transaction configuration (no SeaORM types leaked)
 pub use tx_config::{TxAccessMode, TxConfig, TxIsolationLevel};
+
+// Safe CTE support (ADR cpt-cf-adr-secure-cte-policy, Level A)
+pub use cte::{SecureCte, SecureCteSelect, cte_column, cte_columns_union};
 
 // Select operations
 pub use select::{

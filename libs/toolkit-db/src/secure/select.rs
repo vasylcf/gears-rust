@@ -406,6 +406,78 @@ where
         }
     }
 
+    /// Turn this scoped query into a named CTE body.
+    ///
+    /// The scope condition is already embedded in the query, so the resulting
+    /// CTE is safe wherever it is attached. Constructing a CTE from an
+    /// `Unscoped` select is impossible: this method exists only on `Scoped`.
+    ///
+    /// The name goes through `sea_query`'s identifier quoting, so a hostile
+    /// name renders as an inert quoted identifier rather than executable SQL.
+    #[must_use]
+    pub fn into_cte(self, name: &'static str) -> crate::secure::SecureCte {
+        use sea_orm::QueryTrait;
+        crate::secure::cte::SecureCte::new(self.inner.into_query(), name, self.state.scope)
+    }
+
+    /// Turn this query into a named CTE whose body selects only the given
+    /// columns.
+    ///
+    /// A CTE referenced more than once is materialised by `PostgreSQL`, so a
+    /// body that selects `*` materialises every column — including large
+    /// payloads the caller never reads. The projection closure receives the
+    /// already-scoped `Select`, so narrowing the body cannot drop the scope
+    /// predicate.
+    pub fn into_cte_projected<F>(self, name: &'static str, project: F) -> crate::secure::SecureCte
+    where
+        F: FnOnce(sea_orm::Select<E>) -> sea_orm::Select<E>,
+    {
+        use sea_orm::QueryTrait;
+        crate::secure::cte::SecureCte::new(project(self.inner).into_query(), name, self.state.scope)
+    }
+
+    /// Attach CTE definitions to this query.
+    ///
+    /// Returns a distinct type with its own execution path, because
+    /// `sea_orm::Select` cannot carry a `WITH` clause — returning `Self` would
+    /// let the CTEs silently vanish at execution time.
+    ///
+    /// # Errors
+    /// Returns [`ScopeError::Denied`] when a CTE carries a different scope than
+    /// this query.
+    pub fn with_ctes<I>(
+        self,
+        ctes: I,
+    ) -> Result<crate::secure::SecureCteSelect<E, Scoped>, ScopeError>
+    where
+        E: ScopableEntity,
+        I: IntoIterator<Item = crate::secure::SecureCte>,
+    {
+        crate::secure::cte::assemble(self.inner, &self.state.scope, ctes)
+    }
+
+    /// Attach CTE definitions and narrow the outer projection in one step.
+    ///
+    /// The counterpart of [`project_all`](Self::project_all) for CTE queries:
+    /// the closure runs on the scoped `Select`, so the scope predicate survives
+    /// the projection.
+    ///
+    /// # Errors
+    /// Returns [`ScopeError::Denied`] when a CTE carries a different scope than
+    /// this query.
+    pub fn project_with_ctes<I, F>(
+        self,
+        ctes: I,
+        project: F,
+    ) -> Result<crate::secure::SecureCteSelect<E, Scoped>, ScopeError>
+    where
+        E: ScopableEntity,
+        I: IntoIterator<Item = crate::secure::SecureCte>,
+        F: FnOnce(sea_orm::Select<E>) -> sea_orm::Select<E>,
+    {
+        crate::secure::cte::assemble(project(self.inner), &self.state.scope, ctes)
+    }
+
     /// Unwrap the inner `SeaORM` `Select` for advanced use cases.
     ///
     /// Prefer [`project_all`](Self::project_all) for custom projections —
