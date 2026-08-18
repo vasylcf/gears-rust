@@ -153,3 +153,54 @@ the earlier PG19 spike explicitly could not measure.
 DDL beyond `CREATE TABLE` is not a problem for it. The stand's second migration
 creates `kb_pgq` on every fresh database, so the SQL/PGQ backend has something to
 target without manual setup.
+
+## F9 — the single-statement hop is only a win in one query shape
+
+A local Level A implementation (`libs/toolkit-db/src/secure/cte.rs`) was built to
+measure what a safe CTE actually buys the gear. Two things had to be fixed
+before the comparison meant anything, and both are findings in their own right.
+
+**A CTE body selects `*` unless told otherwise.** A CTE referenced more than
+once is materialised by PostgreSQL, so a body of `SELECT *` materialises the
+edge table's `payload` jsonb on every hop. The two-query hop never had this
+problem because `project_all` already narrows the projection. The CTE API needed
+the same escape hatch, added as `into_cte_projected` / `project_with_ctes`.
+
+**`id IN (a) OR id IN (b)` costs a sequential scan.** The natural way to say
+"either endpoint of an incident edge" is two `IN` subqueries joined by `OR`.
+PostgreSQL cannot drive an index from two hashed subplans under an `OR`, so it
+falls back to a seq scan of `graph_node` — 198 993 rows removed to return 11:
+
+| outer predicate | plan | execution |
+|---|---|---|
+| `id IN (src) OR id IN (dst)` | Seq Scan on `graph_node` | 15.18 ms |
+| `id IN (SELECT src UNION SELECT dst)` | Nested Loop + Index Only Scan | 0.30 ms |
+
+Same rows, 50x apart. The union form is now the only one the gear can build:
+`cte_columns_union` in `toolkit-db` emits it, and
+`the_outer_query_probes_the_node_table_once` fails if the hop regresses to the
+`OR` shape.
+
+**Measured, once both were fixed** — 199 004 nodes / 599 999 edges, hub-skewed
+degree distribution, 40 fixed seeds, debug build, end-to-end over HTTP:
+
+| depth | two scoped queries | one scoped CTE |
+|---|---|---|
+| 1 | p50 4.1 / p95 4.7 / p99 5.1 ms | p50 3.7 / p95 4.2 / p99 4.5 ms |
+| 2 | p50 6.6 / p95 8.0 / p99 8.9 ms | p50 5.5 / p95 6.8 / p99 7.8 ms |
+| 3 | p50 13.9 / p95 50.5 / p99 66.6 ms | p50 10.7 / p95 30.0 / p99 34.2 ms |
+
+Results are identical across all 120 queries, and the cross-tenant trap fixture
+(F1) yields `{1,2}` at depth 1 and `{1,2,3}` at depth 2 under both strategies.
+
+The gain is real but modest at shallow depth — roughly 10–15 % — and grows at
+the tail, where depth 3 p95 drops by 41 %. That tail is where the two-query hop
+pays for candidate lists that cross the process boundary: on a hub-heavy
+frontier the intermediate endpoint set is large, and shipping it to the gear
+only to ship it back as an `IN` list is the dominant cost. The stand runs over
+loopback, so the extra round trip itself is nearly free (~0.05 ms); on a
+1 ms-RTT network the shallow-depth ranking inverts and the deep-depth gap widens.
+
+Conclusion for the toolkit-db discussion: a safe CTE primitive is worth having,
+but the case for it is **tail latency and payload volume on wide frontiers**,
+not per-hop overhead. Correctness never depended on it — see F1.

@@ -6,6 +6,17 @@
 
 use serde::{Deserialize, Serialize};
 
+/// How one traversal hop is executed.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum HopStrategy {
+    /// Two scoped queries: edges, then authorised endpoints.
+    #[default]
+    TwoQuery,
+    /// One statement with a scoped CTE over the edge table.
+    Cte,
+}
+
 /// Configuration of the graph-storage gear.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
@@ -18,6 +29,10 @@ pub struct GraphStorageConfig {
     pub traversal_max_depth: u8,
     /// Default node budget of a traversal response.
     pub traversal_max_nodes: u32,
+    /// Hop execution strategy: `two_query` (works on stock toolkit-db) or
+    /// `cte` (one statement, requires safe CTE support). Present so the two
+    /// can be measured against each other on the same data.
+    pub traversal_hop: HopStrategy,
 }
 
 impl Default for GraphStorageConfig {
@@ -27,6 +42,7 @@ impl Default for GraphStorageConfig {
             ingest_max_edges: 20_000,
             traversal_max_depth: 5,
             traversal_max_nodes: 1_000,
+            traversal_hop: HopStrategy::TwoQuery,
         }
     }
 }

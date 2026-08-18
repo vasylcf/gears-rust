@@ -47,3 +47,4 @@ gears:
       ingest_max_edges: 20000
       traversal_max_depth: 5
       traversal_max_nodes: 1000
+      traversal_hop: cte

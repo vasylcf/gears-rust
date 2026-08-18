@@ -10,7 +10,7 @@ use graph_storage_sdk::{EdgeInput, GraphStats, IngestResult, NodeInput};
 use toolkit_db::{DBProvider, DbError};
 use toolkit_security::{AccessScope, SecurityContext};
 
-use crate::config::GraphStorageConfig;
+use crate::config::{GraphStorageConfig, HopStrategy};
 use crate::domain::error::DomainError;
 use crate::infra::storage::{counts, ingest_repo, traversal};
 
@@ -186,7 +186,14 @@ impl GraphServices {
             if frontier.is_empty() || visited.len() >= budget {
                 break;
             }
-            let neighbours = traversal::expand_frontier(&conn, &scope, &frontier, None).await?;
+            let neighbours = match self.config.traversal_hop {
+                HopStrategy::TwoQuery => {
+                    traversal::expand_frontier(&conn, &scope, &frontier, None).await?
+                }
+                HopStrategy::Cte => {
+                    traversal::expand_frontier_cte(&conn, &scope, &frontier, None).await?
+                }
+            };
             frontier = neighbours
                 .into_iter()
                 .filter(|id| !visited.contains(id))
