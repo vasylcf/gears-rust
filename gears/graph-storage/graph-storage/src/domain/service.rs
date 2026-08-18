@@ -12,7 +12,7 @@ use toolkit_security::{AccessScope, SecurityContext};
 
 use crate::config::GraphStorageConfig;
 use crate::domain::error::DomainError;
-use crate::infra::storage::counts;
+use crate::infra::storage::{counts, traversal};
 
 /// Composition of all domain services used by the gear.
 pub struct GraphServices {
@@ -48,5 +48,51 @@ impl GraphServices {
             .conn()
             .map_err(|e| DomainError::Storage(e.to_string()))?;
         counts::graph_stats(&conn, &scope).await
+    }
+
+    /// Expand a breadth-first neighbourhood around `seeds`.
+    ///
+    /// Depth is clamped to the configured maximum and the result to the node
+    /// budget, so an unbounded request is rejected by construction rather than
+    /// attempted. Only nodes the caller may see enter the frontier, so the walk
+    /// stays inside the caller-authorised subgraph.
+    ///
+    /// # Errors
+    /// Returns [`DomainError::Storage`] when a hop query fails.
+    pub async fn neighbours(
+        &self,
+        ctx: &SecurityContext,
+        seeds: &[i64],
+        depth: u8,
+    ) -> Result<Vec<i64>, DomainError> {
+        let depth = depth.min(self.config.traversal_max_depth);
+        let budget = self.config.traversal_max_nodes as usize;
+        let scope = AccessScope::for_tenant(ctx.subject_tenant_id());
+        let conn = self
+            .db
+            .conn()
+            .map_err(|e| DomainError::Storage(e.to_string()))?;
+
+        let mut visited: Vec<i64> = seeds.to_vec();
+        visited.sort_unstable();
+        visited.dedup();
+        let mut frontier = visited.clone();
+
+        for _ in 0..depth {
+            if frontier.is_empty() || visited.len() >= budget {
+                break;
+            }
+            let neighbours = traversal::expand_frontier(&conn, &scope, &frontier, None).await?;
+            frontier = neighbours
+                .into_iter()
+                .filter(|id| !visited.contains(id))
+                .collect();
+            visited.extend(frontier.iter().copied());
+            visited.sort_unstable();
+            visited.dedup();
+        }
+
+        visited.truncate(budget);
+        Ok(visited)
     }
 }

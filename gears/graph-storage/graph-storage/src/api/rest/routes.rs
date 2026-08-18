@@ -49,5 +49,29 @@ pub fn register_routes(
         .error_500(openapi)
         .register(router, openapi);
 
+    let router = OperationBuilder::get(format!("{BASE}/neighbours"))
+        .operation_id("graph_storage.get_neighbours")
+        .summary("Bounded neighbourhood expansion")
+        .description(
+            "Breadth-first expansion around seed nodes, bounded by the configured \
+             depth and node budget, restricted to the caller-authorised subgraph",
+        )
+        .tag(API_TAG)
+        .authenticated()
+        .require_license_features::<License>([])
+        .query_param("seeds", true, "Comma-separated seed node ids")
+        .query_param_typed("depth", false, "Traversal depth", "integer")
+        .handler(handlers::get_neighbours)
+        .json_response_with_schema::<dto::NeighboursDto>(
+            openapi,
+            http::StatusCode::OK,
+            "Reachable node ids",
+        )
+        .error_400(openapi)
+        .error_401(openapi)
+        .error_403(openapi)
+        .error_500(openapi)
+        .register(router, openapi);
+
     router.layer(Extension(services))
 }

@@ -2333,6 +2333,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "cf-gears-graph-storage"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "cf-gears-graph-storage-sdk",
+ "cf-gears-toolkit",
+ "cf-gears-toolkit-canonical-errors",
+ "cf-gears-toolkit-db",
+ "cf-gears-toolkit-db-macros",
+ "cf-gears-toolkit-macros",
+ "cf-gears-toolkit-security",
+ "http",
+ "inventory",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "time",
+ "tokio",
+ "tracing",
+ "utoipa",
+ "uuid",
+]
+
+[[package]]
+name = "cf-gears-graph-storage-sdk"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "cf-gears-toolkit-canonical-errors",
+ "cf-gears-toolkit-gts",
+ "cf-gears-toolkit-security",
+]
+
+[[package]]
 name = "cf-gears-grpc-hub"
 version = "0.2.18"
 dependencies = [
@@ -5266,6 +5304,27 @@ dependencies = [
  "smallvec",
  "spinning_top",
  "web-time",
+]
+
+[[package]]
+name = "graph-storage-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "cf-gears-api-gateway",
+ "cf-gears-authn-resolver",
+ "cf-gears-authz-resolver",
+ "cf-gears-graph-storage",
+ "cf-gears-grpc-hub",
+ "cf-gears-single-tenant-tr-plugin",
+ "cf-gears-static-authn-plugin",
+ "cf-gears-static-authz-plugin",
+ "cf-gears-tenant-resolver",
+ "cf-gears-toolkit",
+ "cf-gears-types-registry",
+ "clap",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

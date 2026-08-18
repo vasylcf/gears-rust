@@ -23,3 +23,14 @@ impl From<GraphStats> for GraphStatsDto {
         }
     }
 }
+
+/// Result of a bounded neighbourhood expansion.
+#[derive(Debug, Clone)]
+#[toolkit_macros::api_dto(response)]
+pub struct NeighboursDto {
+    /// Node ids reachable from the seeds within the requested depth,
+    /// restricted to what the caller is authorised to see.
+    pub nodes: Vec<i64>,
+    /// Whether the node budget truncated the result.
+    pub truncated: bool,
+}
