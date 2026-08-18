@@ -79,3 +79,77 @@ from the design costs nothing at the ORM layer.
   `failed_precondition`, `invalid_argument`, `not_found`, `out_of_range`,
   `permission_denied`, `resource_exhausted`, `unimplemented`, `unknown`. There is
   no `internal`; the design's error matrix should use `unknown` for that row.
+
+## F5. SQL/PGQ accepts composite keys, and they fence tenants structurally
+
+`CREATE PROPERTY GRAPH` takes composite element keys, so the partition-ready
+schema needs no special handling:
+
+```sql
+graph_edge KEY (tenant_id, id)
+  SOURCE KEY (tenant_id, src_node_id) REFERENCES graph_node (tenant_id, id)
+```
+
+The consequence is stronger than compatibility. Because the source and
+destination keys carry `tenant_id`, an edge cannot join a node of another
+tenant, so **no pattern can cross a tenant boundary even before a scope
+predicate is applied**. With the cross-tenant id-collision fixture from F1 in
+place, a pattern seeded on our tenant's node 1 returns only node 2; the foreign
+`1 -> 3` edge is unreachable by construction rather than by filtering.
+
+This does not remove the need for the caller's scope — a query with no tenant
+predicate still returns rows from every tenant, each internally consistent — but
+it removes the class of error where a walk silently follows a foreign edge.
+
+Gotcha worth recording: `REFERENCES` names the graph *element*, which defaults
+to the table name, not the `LABEL`. `REFERENCES node (...)` fails with
+"source vertex node of edge graph_edge does not exist" when the table is
+`graph_node`.
+
+## F6. Hop cost: two scoped queries are not the slow option
+
+One undirected hop, 200,003 nodes / 600,000 edges (hub-skewed destinations),
+random seeds, single client, 20 s pgbench runs, per-transaction latency log:
+
+| Shape | p50 | p95 | p99 |
+|---|---|---|---|
+| Two scoped queries (what the gear does) | 0.183 ms | 0.371 ms | 0.688 ms |
+| Single statement with a scoped CTE | 0.213 ms | 0.432 ms | 0.811 ms |
+| SQL/PGQ `GRAPH_TABLE`, direction-explicit union | 0.402 ms | 0.645 ms | 1.082 ms |
+
+Two plain indexed lookups beat one CTE statement, and SQL/PGQ costs about 1.7x
+the plain-SQL hop.
+
+**Caveat that matters.** These run over a loopback socket, where a round trip is
+roughly 0.05 ms. The two-query shape spends one extra round trip per hop, so on
+a network with a 1 ms round trip it would lose to the single-statement shapes
+by about 1 ms per hop while the SQL-level difference stays under 0.3 ms. The
+ranking above is therefore a property of this deployment, not of the shapes.
+What the numbers do settle is that no shape is disqualified on cost.
+
+## F7. End-to-end traversal against the NFR
+
+`GET /neighbours` on the same graph, measured through HTTP, **debug build**, with
+a deliberately naive visited set (linear `contains` rather than a hash set):
+
+| Depth | p50 | p95 | max |
+|---|---|---|---|
+| 1 | 8 ms | 10 ms | 17 ms |
+| 2 | 10 ms | 18 ms | 101 ms |
+| 3 | 24 ms | 89 ms | 137 ms |
+
+The traversal NFR allows 1 s at p95 for depth 3 on a 100k-node / 500k-edge
+profile. This fixture is larger, the build is unoptimised and the implementation
+is the naive one, and it still lands an order of magnitude inside the budget.
+
+This is not yet the full NFR claim: the endpoint returns bare node ids, without
+degree ordering, phantom filtering, hydration or metric annotations. It does
+cover bounded expansion, budget enforcement and authorization, which is the part
+the earlier PG19 spike explicitly could not measure.
+
+## F8. Platform migrations can create a property graph
+
+`CREATE PROPERTY GRAPH` runs cleanly through the platform migration runner —
+DDL beyond `CREATE TABLE` is not a problem for it. The stand's second migration
+creates `kb_pgq` on every fresh database, so the SQL/PGQ backend has something to
+target without manual setup.
