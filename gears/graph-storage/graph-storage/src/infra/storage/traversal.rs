@@ -116,6 +116,38 @@ pub async fn expand_frontier<C: DBRunner>(
     Ok(authorised)
 }
 
+/// The endpoint on the far side of each incident edge, as one subquery over the
+/// attached CTE.
+///
+/// Each leg carries the frontier predicate on the **opposite** column, which is
+/// what makes this a hop rather than a neighbourhood: selecting both columns
+/// unconditionally would return the frontier itself alongside its neighbours,
+/// because every frontier node is an endpoint of its own incident edges. The
+/// two-query hop has always worked this way; the CTE hop did not, and the
+/// difference was invisible end to end because the traversal service filters
+/// already-visited ids anyway. See `dev/FINDINGS.md (F15)`.
+///
+/// A frontier node still comes back when it is genuinely adjacent to another
+/// frontier node, which is the correct answer and what the two-query hop does.
+fn far_endpoints(frontier: &[i64]) -> sea_orm::sea_query::SelectStatement {
+    use sea_orm::sea_query::{Alias, Expr, ExprTrait, Query};
+
+    let leg = |select: &str, matched: &str| {
+        Query::select()
+            .column(Alias::new(select))
+            .from(Alias::new("scoped_edges"))
+            .and_where(Expr::col(Alias::new(matched)).is_in(frontier.iter().copied()))
+            .to_owned()
+    };
+
+    leg("dst_node_id", "src_node_id")
+        .union(
+            sea_orm::sea_query::UnionType::Distinct,
+            leg("src_node_id", "dst_node_id"),
+        )
+        .to_owned()
+}
+
 /// Single-statement variant of [`expand_frontier`], using a scoped CTE.
 ///
 /// Both the CTE body and the outer query carry the caller's scope, so the
@@ -132,7 +164,6 @@ pub async fn expand_frontier_cte<C: DBRunner>(
     edge_type_ids: Option<&[i32]>,
 ) -> Result<Vec<i64>, DomainError> {
     use sea_orm::sea_query::{Expr, ExprTrait};
-    use toolkit_db::secure::cte_columns_union;
 
     if frontier.is_empty() {
         return Ok(Vec::new());
@@ -159,12 +190,10 @@ pub async fn expand_frontier_cte<C: DBRunner>(
                 .column(graph_edge::Column::DstNodeId)
         });
 
-    // One `IN` over the union of both endpoint columns, not two `IN`s joined by
-    // `OR`: the `OR` form costs a sequential scan of `graph_node`. See
-    // `cte_columns_union` and `dev/FINDINGS.md (F9)`.
-    let endpoint_ids = cte_columns_union("scoped_edges", "src_node_id", &["dst_node_id"]);
-    let endpoints =
-        sea_orm::Condition::all().add(Expr::col(graph_node::Column::Id).in_subquery(endpoint_ids));
+    // One `IN` over the union of both legs, not two `IN`s joined by `OR`: the
+    // `OR` form costs a sequential scan of `graph_node` (`dev/FINDINGS.md (F9)`).
+    let endpoints = sea_orm::Condition::all()
+        .add(Expr::col(graph_node::Column::Id).in_subquery(far_endpoints(frontier)));
 
     let mut ids: Vec<i64> = graph_node::Entity::find()
         .secure()
@@ -192,7 +221,6 @@ pub async fn expand_frontier_cte<C: DBRunner>(
 #[must_use]
 pub fn expand_frontier_cte_sql(scope: &AccessScope, frontier: &[i64]) -> String {
     use sea_orm::sea_query::{Expr, ExprTrait};
-    use toolkit_db::secure::cte_columns_union;
 
     let incident = sea_orm::Condition::any()
         .add(graph_edge::Column::SrcNodeId.is_in(frontier.iter().copied()))
@@ -208,14 +236,12 @@ pub fn expand_frontier_cte_sql(scope: &AccessScope, frontier: &[i64]) -> String 
                 .column(graph_edge::Column::DstNodeId)
         });
 
-    let endpoint_ids = cte_columns_union("scoped_edges", "src_node_id", &["dst_node_id"]);
-
     graph_node::Entity::find()
         .secure()
         .scope_with(scope)
         .filter(
             sea_orm::Condition::all()
-                .add(Expr::col(graph_node::Column::Id).in_subquery(endpoint_ids)),
+                .add(Expr::col(graph_node::Column::Id).in_subquery(far_endpoints(frontier))),
         )
         .project_with_ctes([edges_cte], |q| {
             q.select_only().column(graph_node::Column::Id)

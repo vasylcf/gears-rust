@@ -508,3 +508,68 @@ index is built on `to_tsvector('simple', search_text)` and the query reads the
 configuration name from the same constant: a mismatch there would still return
 correct rows and silently stop using the index.
 
+## F15 — the CTE hop was returning the frontier, and end-to-end testing could not see it
+
+Comparing the three backends through HTTP said "identical" across 120 requests
+(F13). Comparing the three *functions* directly said otherwise on the first
+seed:
+
+```
+seed 187951: two-query and cte disagreed
+  left:  [9737, 21443]
+  right: [9737, 21443, 187951]
+```
+
+The CTE hop was returning the seed itself. Its candidate set was
+`SELECT src_node_id UNION SELECT dst_node_id` over the incident-edge CTE, and
+every frontier node is an endpoint of its own incident edges, so the frontier
+always came back with its neighbours. The two-query hop had always taken the
+endpoint *opposite* the frontier one; SQL/PGQ does too, because the pattern
+projects `b` while `a` is the seed.
+
+**Why the end-to-end comparison could not catch it.** The traversal service
+seeds `visited` with the request's seeds and filters `!visited.contains(id)`
+from every hop result. A hop that returns the frontier is therefore
+indistinguishable from one that does not, at the API. The defect only surfaces
+where the hop is used as a component — which is exactly what the port promises
+and what a second consumer would do.
+
+The fix gives each union leg the frontier predicate on the **opposite** column,
+mirroring the two-query logic. A frontier node still comes back when it is
+genuinely adjacent to another frontier node, which is the correct answer and
+what the other two backends return.
+
+### What the parity matrix covers that HTTP did not
+
+The shell comparison exercised single seeds at three depths. Direct calls reach
+the shapes the API does not currently expose, and those are where the backends
+diverge:
+
+- multi-seed frontiers — the shape every hop past the first actually takes, and
+  where SQL/PGQ differs most structurally (it binds the whole frontier as one
+  array rather than a value list);
+- edge-type filters, including a type no edge carries;
+- a second hop fed from each backend's own first-hop result, so a divergence
+  compounds rather than cancels;
+- the cross-tenant trap, `deny_all`, and a foreign tenant scope.
+
+Eight cases, all three backends, all agreeing.
+
+### Re-measured after the fix
+
+`dev/bench-hops.sh` now takes these numbers, so re-running them is one command.
+It restarts the stand per backend, checks the fallback log is empty, times 40
+fixed seeds per depth, and fails if the backends disagree — a backend that is
+fast because it answers differently is not faster.
+
+| depth | two scoped queries | scoped CTE | `GRAPH_TABLE` |
+|---|---|---|---|
+| 1 | p50 3.8 / p95 4.0 ms | p50 3.1 / p95 6.0 ms | p50 3.7 / p95 4.1 ms |
+| 2 | p50 6.7 / p95 7.9 ms | p50 5.3 / p95 7.5 ms | p50 6.6 / p95 7.9 ms |
+| 3 | p50 13.7 / p95 52.8 ms | p50 9.0 / p95 33.1 ms | p50 11.5 / p95 35.3 ms |
+
+The correction cost the CTE hop some of its margin at depth 2 — it now carries
+two predicates per leg instead of none — and the ordering is unchanged: CTE
+first, SQL/PGQ close behind, two-query last, with the gap concentrated in the
+depth-3 tail.
+
