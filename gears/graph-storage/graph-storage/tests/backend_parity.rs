@@ -162,23 +162,74 @@ async fn the_backends_agree_on_an_empty_frontier() {
 /// The cross-tenant trap: our tenant has 1 -> 2 -> 3, a foreign tenant has
 /// 1 -> 3 with the same surrogate ids. A backend that followed a foreign edge
 /// would reach 3 in one hop.
+///
+/// The fixture is checked before the trap is sprung. A trap with nothing on the
+/// other side passes for the wrong reason, and it did: the foreign tenant was
+/// lost from the stand at some point and this test stayed green for days while
+/// proving nothing. Asserting the precondition is the whole difference between
+/// a guarantee and a habit.
 #[tokio::test]
 async fn every_backend_holds_the_cross_tenant_trap() {
     let Some(db) = stand().await else { return };
     let conn = db.conn().expect("conn");
     let scope = tenant_scope();
 
+    assert!(
+        foreign_shortcut_exists(&conn).await,
+        "the trap fixture is missing: no foreign tenant owns an edge 1 -> 3, so this \
+         test cannot detect a cross-tenant walk. Re-seed it before trusting a pass."
+    );
+
     let first = assert_agree(&conn, &scope, &[1], None, "trap hop 1").await;
     assert!(
         !first.contains(&3),
         "a backend reached the foreign tenant's shortcut: {first:?}"
     );
+    assert!(
+        first.contains(&2),
+        "the walk lost its own tenant's edge 1 -> 2: {first:?}"
+    );
 
     let second = assert_agree(&conn, &scope, &first, None, "trap hop 2").await;
     assert!(
-        second.contains(&1) || second.contains(&3),
-        "the trap fixture is not wired as expected: {second:?}"
+        second.contains(&3),
+        "depth 2 did not reach 3 through the tenant's own path: {second:?}"
     );
+}
+
+/// Whether some tenant other than ours owns an edge between the trap's ids.
+///
+/// Read with a scoped query over the edge entity under an all-tenant scope,
+/// then filtered in memory: the point is to observe the fixture, not to trust
+/// the code under test to report on itself.
+async fn foreign_shortcut_exists(conn: &DbConn<'_>) -> bool {
+    use cf_gears_graph_storage::infra::storage::entity::graph_edge;
+    use sea_orm::{ColumnTrait, EntityTrait, QuerySelect};
+    use toolkit_db::secure::SecureEntityExt;
+
+    #[derive(Debug, sea_orm::FromQueryResult)]
+    struct Row {
+        tenant_id: uuid::Uuid,
+    }
+
+    let ours = uuid::Uuid::parse_str(STAND_TENANT).unwrap();
+    graph_edge::Entity::find()
+        .secure()
+        .scope_with(&AccessScope::allow_all())
+        .filter(
+            sea_orm::Condition::all()
+                .add(graph_edge::Column::SrcNodeId.eq(1_i64))
+                .add(graph_edge::Column::DstNodeId.eq(3_i64)),
+        )
+        .project_all(conn, |q| {
+            q.select_only()
+                .column(graph_edge::Column::TenantId)
+                .into_model::<Row>()
+        })
+        .await
+        .expect("fixture probe")
+        .iter()
+        .any(|r| r.tenant_id != ours)
 }
 
 /// A scope for a tenant that owns nothing gets nothing from any backend, even

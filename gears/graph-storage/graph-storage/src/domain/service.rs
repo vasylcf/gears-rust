@@ -233,6 +233,12 @@ impl GraphServices {
     /// `two_query` would make any measurement taken from it meaningless — so it
     /// is logged with the reason.
     fn effective_hop(configured: HopStrategy, scope: &AccessScope) -> HopStrategy {
+        if configured == HopStrategy::Cte && !traversal::is_tenant_only(scope) {
+            tracing::warn!(
+                "scope carries filters a CTE body cannot express; serving this request with the two-query hop"
+            );
+            return HopStrategy::TwoQuery;
+        }
         if configured != HopStrategy::Pgq {
             return configured;
         }

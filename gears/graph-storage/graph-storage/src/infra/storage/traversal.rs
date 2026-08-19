@@ -39,6 +39,82 @@ struct NodeId {
     id: i64,
 }
 
+/// The caller's scope projected onto the tenant dimension, for use on the edge
+/// table.
+///
+/// # Why the edge table must not carry the whole scope
+///
+/// `graph_node` and `graph_edge` both map the `id` resource property to their
+/// own primary key, so a scope naming node identifiers filters *edges by edge
+/// id* — and a scope naming edge identifiers filters *nodes by node id* on the
+/// second query. One resource list cannot satisfy both tables, so applying the
+/// whole scope to both makes every resource-narrowed request return nothing.
+/// Measured on the stand: a scope of ten node ids returned an empty hop where
+/// two of the seed's neighbours were authorised.
+///
+/// # Why widening here is safe
+///
+/// The edge query contributes candidate identifiers, nothing else — the hop
+/// reads `src_node_id` and `dst_node_id` and no other column. Those candidates
+/// are then authorised by the node query under the caller's **whole** scope, so
+/// a node the caller may not see cannot survive. This is the same split the
+/// SQL/PGQ backend makes for the same reason: authorise where the identifiers
+/// mean what the scope says they mean.
+///
+/// Tenant filters are kept as they are, including `InTenantSubtree`, which the
+/// edge table can express because it carries `tenant_id`. A constraint with no
+/// tenant filter at all bounds nothing here; because constraints are OR-ed, one
+/// such constraint makes the projection unbounded.
+fn edge_scope(scope: &AccessScope) -> AccessScope {
+    use toolkit_security::access_scope::{ScopeConstraint, pep_properties};
+
+    if scope.is_deny_all() {
+        return AccessScope::deny_all();
+    }
+    if scope.is_unconstrained() {
+        return AccessScope::allow_all();
+    }
+
+    let mut constraints = Vec::new();
+    for constraint in scope.constraints() {
+        let tenant_filters: Vec<_> = constraint
+            .filters()
+            .iter()
+            .filter(|f| f.property() == pep_properties::OWNER_TENANT_ID)
+            .cloned()
+            .collect();
+        if tenant_filters.is_empty() {
+            return AccessScope::allow_all();
+        }
+        constraints.push(ScopeConstraint::new(tenant_filters));
+    }
+    AccessScope::from_constraints(constraints)
+}
+
+/// Whether every filter in `scope` is on the tenant property.
+///
+/// The CTE hop cannot serve a scope for which this is false. Its edge query is
+/// a CTE body, and the safe-CTE API scopes every body with the outer query's
+/// own `AccessScope` by construction — that is what makes mixing scopes in one
+/// statement unrepresentable. The two-query hop projects the scope for its edge
+/// query ([`edge_scope`]); a CTE body has no equivalent, so a resource-narrowed
+/// scope filters edges by edge id and the hop returns nothing.
+///
+/// The port checks this and serves such requests on the two-query hop.
+#[must_use]
+pub fn is_tenant_only(scope: &AccessScope) -> bool {
+    use toolkit_security::access_scope::pep_properties;
+
+    scope.is_deny_all()
+        || scope.is_unconstrained()
+        || scope.constraints().iter().all(|constraint| {
+            constraint
+                .filters()
+                .iter()
+                .all(|f| f.property() == pep_properties::OWNER_TENANT_ID)
+        })
+}
+
 /// Return the node ids one undirected hop away from `frontier`.
 ///
 /// Edges are traversed in both directions. Only endpoints the caller is
@@ -69,7 +145,7 @@ pub async fn expand_frontier<C: DBRunner>(
 
     let endpoints: Vec<EdgeEndpoints> = graph_edge::Entity::find()
         .secure()
-        .scope_with(scope)
+        .scope_with(&edge_scope(scope))
         .filter(incident)
         .project_all(conn, |q| {
             q.select_only()

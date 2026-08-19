@@ -573,3 +573,68 @@ two predicates per leg instead of none — and the ordering is unchanged: CTE
 first, SQL/PGQ close behind, two-query last, with the gap concentrated in the
 depth-3 tail.
 
+## F16 — two backends were empty for every caller narrower than a tenant, and the trap that should have caught it was gone
+
+Two defects, found together because measuring the first exposed the second.
+
+### A scope narrower than a tenant returned nothing
+
+`graph_node` and `graph_edge` both map the `id` resource property to their own
+primary key. The two-query and CTE hops applied the caller's **whole** scope to
+both tables, so a scope naming node identifiers filtered *edges by edge id*:
+
+| backend | result | correct? |
+|---|---|---|
+| two-query | `[]` | no |
+| CTE | `[]` | no |
+| SQL/PGQ | `[2259, 4293]` | yes |
+
+Scope: one tenant plus ten node ids, of which the seed and two of its ten
+neighbours were authorised.
+
+It is not a mis-mapping but a contradiction. Re-running with the *edge* ids in
+the scope also returned `[]`: the first query then passes and the second, over
+`graph_node`, filters everything out. One resource list cannot mean the right
+thing on two tables, so those hops were empty for **every** resource-narrowed
+caller — silently, looking exactly like an empty neighbourhood.
+
+SQL/PGQ was right by construction: the pattern carries only the tenant, and the
+scope is applied where the identifiers mean nodes. The candidate-producer split
+was load-bearing rather than a compromise.
+
+**Fix.** `edge_scope` projects the caller's scope onto the tenant dimension for
+the edge query, keeping tenant filters (including `InTenantSubtree`, which the
+edge table can express) and widening where a constraint carries none. Widening
+is safe because the edge query contributes only candidate identifiers, which
+the node query then authorises under the whole scope.
+
+The CTE hop cannot be fixed the same way: the safe-CTE API scopes every body
+with the outer query's own scope by construction, which is what makes mixing
+scopes in one statement unrepresentable. So the port deflects it to the
+two-query hop when the scope carries non-tenant filters, and a test pins the
+under-return so the deflection can be removed the day a CTE body can be scoped
+separately.
+
+### The cross-tenant trap had nothing on the other side
+
+Mutating `edge_scope` to widen unconditionally passed every test, which should
+have been impossible — an unscoped edge query is exactly the F1 leak. It passed
+because the foreign tenant had been lost from the stand at some point, so
+`every_backend_holds_the_cross_tenant_trap` had been asserting that a walk did
+not reach a node that no longer existed. Green for days, proving nothing.
+
+Two changes. The test now asserts its own precondition — that some tenant other
+than ours owns the shortcut edge — and fails with an explanation if not, because
+a trap that cannot detect a missing trap is worse than no trap. And the fixture
+lives in `dev/seed-trap.sql` rather than in whoever set it up.
+
+With the fixture restored, the same mutation is caught immediately: the
+two-query hop returns `[2, 3]`, having followed the foreign tenant's edge.
+
+### What this says about the test suite
+
+Both defects were invisible to every test that existed, for the same reason: the
+whole suite used tenant-only scopes. The parity matrix (F15) had already learned
+that testing at the API missed what testing at the seam caught; this is the same
+lesson one level down. A guarantee is only tested by a case that can fail.
+
