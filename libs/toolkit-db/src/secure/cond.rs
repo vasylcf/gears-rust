@@ -943,4 +943,87 @@ mod tests {
             "the emitted predicate no longer matches the one that was executed"
         );
     }
+
+    /// Policy 2, mechanically. An element table that resolves no scope property
+    /// compiles to `WHERE false` under a constrained scope -- safe, and a
+    /// silently empty traversal. The addressing parameter alone does not detect
+    /// it, because the failure is inside `resolve_property` rather than in the
+    /// filter arm.
+    ///
+    /// So the builder needs a separate check: does this entity resolve at least
+    /// one property the scope uses? This test shows the current compiler cannot
+    /// distinguish "authorised to nothing" from "not an eligible element", which
+    /// is why ADR-0002 has to make that a policy rather than rely on the
+    /// compiler.
+    #[test]
+    fn an_element_resolving_no_property_is_indistinguishable_from_deny_all() {
+        use sea_orm::sea_query::{PostgresQueryBuilder, Query};
+
+        let render = |cond: Condition| {
+            Query::select()
+                .expr(sea_orm::sea_query::Expr::val(1))
+                .cond_where(cond)
+                .to_owned()
+                .to_string(PostgresQueryBuilder)
+        };
+
+        // `unscopable_entity` maps nothing, like tenant_closure and
+        // resource_group_membership do today.
+        let scoped = build_scope_condition_addressed::<unscopable_entity::Entity>(
+            &AccessScope::for_tenant(uuid::Uuid::from_u128(1)),
+            ColumnAddress::GraphElement("link"),
+        )
+        .expect("no filter arm fails; the property simply does not resolve");
+
+        let denied = build_scope_condition_addressed::<unscopable_entity::Entity>(
+            &AccessScope::deny_all(),
+            ColumnAddress::GraphElement("link"),
+        )
+        .expect("deny-all carries no column");
+
+        assert_eq!(
+            render(scoped),
+            render(denied),
+            "a table that resolves no property must be rejected by policy, because \
+             the compiler cannot tell it apart from a caller authorised to nothing"
+        );
+    }
+
+    /// The entity shape ADR-0002 lists as ineligible: a join table carrying no
+    /// scope dimension of its own, like `tenant_closure`.
+    mod unscopable_entity {
+        use super::*;
+        use sea_orm::entity::prelude::*;
+
+        #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+        #[sea_orm(table_name = "unscopable_link")]
+        pub struct Model {
+            #[sea_orm(primary_key)]
+            pub ancestor_id: Uuid,
+            pub descendant_id: Uuid,
+        }
+
+        #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+        pub enum Relation {}
+
+        impl ActiveModelBehavior for ActiveModel {}
+
+        impl crate::secure::ScopableEntity for Entity {
+            fn tenant_col() -> Option<Column> {
+                None
+            }
+            fn resource_col() -> Option<Column> {
+                None
+            }
+            fn owner_col() -> Option<Column> {
+                None
+            }
+            fn type_col() -> Option<Column> {
+                None
+            }
+            fn resolve_property(_property: &str) -> Option<Column> {
+                None
+            }
+        }
+    }
 }

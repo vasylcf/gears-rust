@@ -131,3 +131,56 @@ but
 `build_scope_condition(scope, addressing) -> Result<Condition, _>`,
 which is a signature change rather than an internal one.
 
+## Phase D — Policy 2 has to be a policy; the compiler cannot catch it
+
+ADR-0002 requires every element table to resolve at least one scope property,
+and says the builder must reject one that cannot rather than emit a deny-all
+traversal. That is the right call, and this shows why it cannot be delegated to
+the scope compiler.
+
+An entity resolving nothing — the shape `tenant_closure`,
+`resource_group_membership` and the rest have today — compiles to exactly the
+same condition under a real tenant scope as it does under `deny_all`:
+
+| entity, scope | rendered |
+|---|---|
+| resolves nothing, `for_tenant(t)` | `WHERE FALSE` |
+| resolves nothing, `deny_all()` | `WHERE FALSE` |
+
+The two are indistinguishable at the point where the condition is built, because
+the failure happens inside `resolve_property` rather than in a filter arm. So
+"is this an eligible graph element" is a question about the *entity*, asked
+before compiling, and it belongs where the ADR puts it — in the builder's
+admission of an element, not in the scope compiler.
+
+## Phase E — the subquery fallback is expressible, but not through this API
+
+The third fallback offered on the PR — keep the closure query in the same
+statement and correlate the pattern against it — needs two things: a second
+`FROM` item, and a pattern predicate that references its alias. Both are
+accepted by PostgreSQL:
+
+| shape | works |
+|---|---|
+| `FROM graph_node n, GRAPH_TABLE(… WHERE a.id = n.id …)` | yes |
+| `FROM (SELECT …) s, GRAPH_TABLE(… WHERE a.id = s.id …)` | yes |
+
+The first is the more interesting one for ADR-0002. `with_graph()` starts from a
+`SecureSelect<E, Scoped>` and keeps outer-query operations, so `E`'s table is
+presumably in the `FROM` — which means a pattern could correlate against the
+outer entity's own columns, and a traversal could be seeded from a scoped entity
+query with no new construct at all. Whether `PathBuilder` can express a
+predicate referring to the outer alias is an API question, not a SQL one.
+
+What the API has no room for is an **arbitrary** sibling. A tenant-subtree scope
+needs the closure as a correlation source, and the closure is neither `E` nor a
+graph element — and it cannot be the outer entity either, because closure tables
+resolve no scope property and a scoped select over one compiles to `WHERE false`
+(Phase D). So the fallback needs either an API addition along the lines of
+`.with_source(name, subquery)`, or the closure pre-resolved after all.
+
+That is worth settling alongside the open question rather than after it: if the
+answer to "may a pattern hold a subquery" is no — and it is — then whether the
+API can hold a sibling decides whether subtree scopes are servable at all, or
+whether fallback 1 (reject) is where v1 lands.
+
