@@ -26,11 +26,6 @@ pub enum SeaOrmRunner<'a> {
     Tx(&'a sea_orm::DatabaseTransaction),
 }
 
-// Only the outbox module needs `executor()` today; the whole impl block is
-// gated to match so it isn't flagged as dead code (and the block itself
-// doesn't trip an elidable-lifetime warning once empty) when `preview-outbox`
-// is off.
-#[cfg(feature = "preview-outbox")]
 impl<'a> SeaOrmRunner<'a> {
     /// Erase the connection/transaction distinction into `SeaORM`'s own executor enum.
     ///
@@ -44,6 +39,19 @@ impl<'a> SeaOrmRunner<'a> {
         match *self {
             Self::Conn(c) => sea_orm::DatabaseExecutor::Connection(c),
             Self::Tx(t) => sea_orm::DatabaseExecutor::Transaction(t),
+        }
+    }
+
+    /// Which SQL dialect to render for.
+    ///
+    /// `DBRunner` is deliberately method-free, so callers that must build a
+    /// statement themselves (rather than letting `SeaORM` do it) have no other
+    /// way to learn the backend. Kept `pub(crate)` so no `SeaORM` type leaks.
+    pub(crate) fn backend(&self) -> sea_orm::DbBackend {
+        use sea_orm::ConnectionTrait;
+        match *self {
+            Self::Conn(c) => c.get_database_backend(),
+            Self::Tx(t) => t.get_database_backend(),
         }
     }
 }

@@ -22,7 +22,7 @@
 //! scoped queries: edges first, then the authorised endpoints. Both go through
 //! the secure ORM, so the tenant predicate is applied by construction.
 
-use sea_orm::{ColumnTrait, EntityTrait, FromQueryResult, QuerySelect};
+use sea_orm::{ColumnTrait, EntityTrait, FromQueryResult, QueryFilter, QuerySelect};
 use toolkit_db::secure::{AccessScope, DBRunner, SecureEntityExt};
 
 use crate::domain::error::DomainError;
@@ -178,31 +178,27 @@ pub async fn expand_frontier_cte<C: DBRunner>(
             .add(graph_edge::Column::TypeId.is_in(types.iter().copied()));
     }
 
-    // Project the body: a CTE referenced twice is materialised, and the edge
-    // table carries a jsonb payload the hop never reads.
-    let edges_cte = graph_edge::Entity::find()
-        .secure()
-        .scope_with(scope)
-        .filter(incident)
-        .into_cte_projected("scoped_edges", |q| {
-            q.select_only()
-                .column(graph_edge::Column::SrcNodeId)
-                .column(graph_edge::Column::DstNodeId)
-        });
-
-    // One `IN` over the union of both legs, not two `IN`s joined by `OR`: the
-    // `OR` form costs a sequential scan of `graph_node` (`dev/FINDINGS.md (F9)`).
-    let endpoints = sea_orm::Condition::all()
-        .add(Expr::col(graph_node::Column::Id).in_subquery(far_endpoints(frontier)));
-
     let mut ids: Vec<i64> = graph_node::Entity::find()
         .secure()
         .scope_with(scope)
-        .filter(endpoints)
-        .project_with_ctes([edges_cte], |q| {
-            q.select_only().column(graph_node::Column::Id)
+        // The body is projected because a CTE referenced twice is materialised,
+        // and the edge table carries a jsonb payload the hop never reads.
+        .with_ctes()
+        .cte::<graph_edge::Entity>("scoped_edges", |q| {
+            q.select_only()
+                .column(graph_edge::Column::SrcNodeId)
+                .column(graph_edge::Column::DstNodeId)
+                .filter(incident)
         })
-        .map_err(|e| DomainError::Storage(e.to_string()))?
+        // One `IN` over the union of both legs, not two `IN`s joined by `OR`:
+        // the `OR` form costs a sequential scan of `graph_node`
+        // (`dev/FINDINGS.md (F9)`).
+        .filter(
+            sea_orm::Condition::all()
+                .add(Expr::col(graph_node::Column::Id).in_subquery(far_endpoints(frontier))),
+        )
+        .select_only()
+        .column(graph_node::Column::Id)
         .all_as::<NodeId>(conn)
         .await
         .map_err(|e| DomainError::Storage(e.to_string()))?
@@ -214,87 +210,55 @@ pub async fn expand_frontier_cte<C: DBRunner>(
     Ok(ids)
 }
 
-/// Render the single-statement hop without executing it.
-///
-/// Used by the finding test to assert that the `WITH` clause survives and that
-/// the scope predicate is present inside the CTE body, not only around it.
-#[must_use]
-pub fn expand_frontier_cte_sql(scope: &AccessScope, frontier: &[i64]) -> String {
-    use sea_orm::sea_query::{Expr, ExprTrait};
-
-    let incident = sea_orm::Condition::any()
-        .add(graph_edge::Column::SrcNodeId.is_in(frontier.iter().copied()))
-        .add(graph_edge::Column::DstNodeId.is_in(frontier.iter().copied()));
-
-    let edges_cte = graph_edge::Entity::find()
-        .secure()
-        .scope_with(scope)
-        .filter(incident)
-        .into_cte_projected("scoped_edges", |q| {
-            q.select_only()
-                .column(graph_edge::Column::SrcNodeId)
-                .column(graph_edge::Column::DstNodeId)
-        });
-
-    graph_node::Entity::find()
-        .secure()
-        .scope_with(scope)
-        .filter(
-            sea_orm::Condition::all()
-                .add(Expr::col(graph_node::Column::Id).in_subquery(far_endpoints(frontier))),
-        )
-        .project_with_ctes([edges_cte], |q| {
-            q.select_only().column(graph_node::Column::Id)
-        })
-        .map(toolkit_db::secure::SecureCteSelect::to_sql)
-        .unwrap_or_default()
-}
-
 #[cfg(test)]
 mod cte_tests {
     use super::*;
-    use uuid::Uuid;
 
-    /// The Level A invariant, checked on emitted SQL: the tenant predicate must
-    /// appear **inside** the CTE body, not only around it, and the `WITH`
-    /// clause must survive into the executed statement.
+    /// The hop must probe `graph_node` through a **single** semi-join. Two `IN`
+    /// subqueries joined by `OR` are logically equivalent and make `PostgreSQL`
+    /// sequentially scan the node table — 15.2 ms against 0.30 ms on the stand —
+    /// so the shape is load-bearing, not stylistic. See `dev/FINDINGS.md (F9)`.
+    ///
+    /// Asserted on [`far_endpoints`] rather than on the whole statement, because
+    /// `SecureCteSelect::build_statement` is `pub(crate)` in `toolkit-db`: a gear
+    /// cannot render a CTE query without executing it. The invariants that live
+    /// inside the statement — the scope predicate in every CTE body, the `WITH`
+    /// clause surviving into execution — are tested there instead, and the
+    /// behaviour they produce is covered by the cross-backend parity suite.
     #[test]
-    fn scope_lands_inside_the_cte_body() {
-        let tenant = Uuid::from_u128(0x1234);
-        let scope = AccessScope::for_tenant(tenant);
-        let sql = expand_frontier_cte_sql(&scope, &[1, 2, 3]);
+    fn the_candidate_subquery_is_one_union_not_two_predicates() {
+        use sea_orm::sea_query::PostgresQueryBuilder;
 
-        assert!(sql.starts_with("WITH "), "the WITH clause vanished: {sql}");
+        let sql = far_endpoints(&[1, 2, 3]).to_string(PostgresQueryBuilder);
 
-        let body_start = sql.find("AS (").expect("cte body");
-        let body_end = sql.find(") SELECT").unwrap_or(sql.len());
-        let body = &sql[body_start..body_end];
         assert!(
-            body.contains("tenant_id"),
-            "cte body carries no tenant predicate: {body}"
+            sql.contains("UNION"),
+            "the two legs were not unioned: {sql}"
         );
-
-        let outer = &sql[body_end..];
-        assert!(
-            outer.contains("tenant_id"),
-            "outer query carries no tenant predicate: {outer}"
+        assert_eq!(
+            sql.matches("SELECT").count(),
+            2,
+            "expected exactly two legs: {sql}"
         );
     }
 
-    /// The hop must probe `graph_node` through a single semi-join. Two `IN`
-    /// subqueries joined by `OR` are logically equivalent but make `PostgreSQL`
-    /// sequentially scan the node table (15.2 ms versus 0.30 ms on the stand),
-    /// so the shape is load-bearing, not stylistic. See `dev/FINDINGS.md (F9)`.
+    /// Each leg matches the frontier on the column **opposite** the one it
+    /// selects. Selecting both endpoint columns unconditionally returns the
+    /// frontier alongside its neighbours, which is the defect the parity suite
+    /// caught (`dev/FINDINGS.md (F15)`).
     #[test]
-    fn the_outer_query_probes_the_node_table_once() {
-        let scope = AccessScope::for_tenant(Uuid::from_u128(0x1234));
-        let sql = expand_frontier_cte_sql(&scope, &[1, 2, 3]);
+    fn each_leg_matches_on_the_opposite_column() {
+        use sea_orm::sea_query::PostgresQueryBuilder;
 
-        let outer = &sql[sql.find(") SELECT").expect("outer query")..];
-        assert_eq!(
-            outer.matches(" IN (SELECT ").count(),
-            1,
-            "the outer query must contain exactly one IN-subquery: {outer}"
+        let sql = far_endpoints(&[7]).to_string(PostgresQueryBuilder);
+
+        assert!(
+            sql.contains(r#"SELECT "dst_node_id" FROM "scoped_edges" WHERE "src_node_id" IN"#),
+            "the outgoing leg does not match on the source column: {sql}"
+        );
+        assert!(
+            sql.contains(r#"SELECT "src_node_id" FROM "scoped_edges" WHERE "dst_node_id" IN"#),
+            "the incoming leg does not match on the destination column: {sql}"
         );
     }
 }
