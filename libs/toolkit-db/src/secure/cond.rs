@@ -82,6 +82,169 @@ where
     }
 }
 
+// ── ADR-0002 probe: addressing a scope condition by graph variable ─────────
+//
+// ADR-0002 says the one substantive change the Secure ORM core needs for
+// property-graph support is to parameterise *how a resolved column is
+// addressed*, rather than to write a second scope compiler:
+//
+//     for_table()          -> "resources"."tenant_id"
+//     for_graph_element(v) -> "dst"."tenant_id"
+//
+// This is that change, implemented to find out whether one compiler really can
+// serve both paths. It does -- with one qualification the ADR's diagram does
+// not carry, described on `AddressError`.
+
+/// How a resolved scope column is addressed in the emitted predicate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ColumnAddress {
+    /// Qualified by the entity's own table, as an ordinary select needs.
+    Table,
+    /// Qualified by a graph pattern variable, as an element pattern needs.
+    ///
+    /// A pattern element has no table reference; it has a variable. The
+    /// property name is the entity's column name, which is why the property
+    /// graph's DDL has to expose scope columns as properties under their own
+    /// names -- see ADR-0002 Policy 3.
+    GraphElement(&'static str),
+}
+
+/// A scope filter that cannot be expressed where the condition is going.
+///
+/// Three `ScopeFilter` arms -- `InGroup`, `InGroupSubtree`, `InTenantSubtree` --
+/// compile to `col IN (SELECT ...)` over the membership or closure tables.
+/// `PostgreSQL` 19 rejects a subquery anywhere inside `GRAPH_TABLE`, including
+/// inside an element pattern's `WHERE`:
+///
+/// ```text
+/// ERROR:  subqueries within GRAPH_TABLE reference are not supported
+/// ```
+///
+/// So the addressing parameter alone does not make one compiler serve both
+/// paths: in graph-element mode those arms have to fail, and fail **loudly**.
+/// Dropping them would be fail-closed in the letter -- the constraint would
+/// vanish and the scope would compile to `WHERE false` -- and that is exactly
+/// the silent empty traversal ADR-0002 Policy 2 exists to prevent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum AddressError {
+    /// The filter compiles to a subquery, which a pattern cannot hold.
+    #[error(
+        "scope filter `{0}` compiles to a subquery, which PostgreSQL rejects inside GRAPH_TABLE"
+    )]
+    SubqueryInPattern(&'static str),
+}
+
+impl ColumnAddress {
+    /// Render a resolved column as an expression under this addressing.
+    fn expr<C: ColumnTrait + Copy>(self, col: C) -> Expr {
+        match self {
+            Self::Table => col.into_expr(),
+            Self::GraphElement(var) => {
+                Expr::col((Alias::new(var), Alias::new(col.to_string().as_str())))
+            }
+        }
+    }
+
+    /// Whether a subquery-producing filter may be emitted here.
+    const fn allows_subquery(self) -> bool {
+        matches!(self, Self::Table)
+    }
+}
+
+/// Compile `scope` into a condition addressed the given way.
+///
+/// The table addressing reproduces [`build_scope_condition`] exactly; the graph
+/// addressing is the new path.
+///
+/// # Errors
+/// Returns [`AddressError`] when a filter cannot be expressed under `address`.
+pub fn build_scope_condition_addressed<E>(
+    scope: &AccessScope,
+    address: ColumnAddress,
+) -> Result<Condition, AddressError>
+where
+    E: ScopableEntity + EntityTrait,
+    E::Column: ColumnTrait + Copy,
+{
+    if scope.is_unconstrained() {
+        return Ok(Condition::all());
+    }
+    if scope.is_deny_all() {
+        return Ok(deny_all());
+    }
+
+    let mut compiled: Vec<Condition> = Vec::new();
+    for constraint in scope.constraints() {
+        if let Some(cond) = build_constraint_condition_addressed::<E>(constraint, address)? {
+            compiled.push(cond);
+        }
+    }
+
+    Ok(match compiled.len() {
+        0 => deny_all(),
+        1 => compiled.into_iter().next().unwrap_or_else(deny_all),
+        _ => {
+            let mut or_cond = Condition::any();
+            for c in compiled {
+                or_cond = or_cond.add(c);
+            }
+            or_cond
+        }
+    })
+}
+
+/// One constraint, addressed. `Ok(None)` keeps the fail-closed behaviour of the
+/// original: a filter whose property does not resolve drops its constraint.
+fn build_constraint_condition_addressed<E>(
+    constraint: &ScopeConstraint,
+    address: ColumnAddress,
+) -> Result<Option<Condition>, AddressError>
+where
+    E: ScopableEntity + EntityTrait,
+    E::Column: ColumnTrait + Copy,
+{
+    if constraint.is_empty() {
+        return Ok(Some(Condition::all()));
+    }
+    let mut and_cond = Condition::all();
+    for filter in constraint.filters() {
+        let Some(col) = E::resolve_property(filter.property()) else {
+            return Ok(None);
+        };
+        match filter {
+            ScopeFilter::Eq(eq) => {
+                let expr = scope_value_to_sea_expr(eq.value());
+                and_cond = and_cond.add(address.expr(col).eq(expr));
+            }
+            ScopeFilter::In(inf) => {
+                let sea_values = scope_values_to_sea_values(inf.values());
+                and_cond = and_cond.add(address.expr(col).is_in(sea_values));
+            }
+            ScopeFilter::InGroup(_) if !address.allows_subquery() => {
+                return Err(AddressError::SubqueryInPattern("InGroup"));
+            }
+            ScopeFilter::InGroupSubtree(_) if !address.allows_subquery() => {
+                return Err(AddressError::SubqueryInPattern("InGroupSubtree"));
+            }
+            ScopeFilter::InTenantSubtree(_) if !address.allows_subquery() => {
+                return Err(AddressError::SubqueryInPattern("InTenantSubtree"));
+            }
+            // The subquery arms under table addressing are unchanged; they are
+            // reached through the original compiler so there is exactly one
+            // definition of each.
+            other => {
+                let single = ScopeConstraint::new(vec![other.clone()]);
+                if let Some(c) = build_constraint_condition::<E>(&single) {
+                    and_cond = and_cond.add(c);
+                } else {
+                    return Ok(None);
+                }
+            }
+        }
+    }
+    Ok(Some(and_cond))
+}
+
 /// Build SQL for a single constraint (AND of filters).
 ///
 /// Returns `None` if any filter references an unknown property (fail-closed).
@@ -631,6 +794,153 @@ mod tests {
         assert!(
             !cond_str.contains("Value(Bool(Some(false)))"),
             "Expected a real condition, got deny-all: {cond_str}"
+        );
+    }
+
+    // ── ADR-0002 probe ────────────────────────────────────────────────────
+
+    /// Table addressing must reproduce the original compiler exactly, or the
+    /// "one compiler, two addressings" claim is a rewrite in disguise.
+    #[test]
+    fn table_addressing_matches_the_original_compiler() {
+        use sea_orm::sea_query::{PostgresQueryBuilder, Query};
+
+        let render = |cond: Condition| {
+            Query::select()
+                .expr(sea_orm::sea_query::Expr::val(1))
+                .cond_where(cond)
+                .to_owned()
+                .to_string(PostgresQueryBuilder)
+        };
+
+        for scope in [
+            AccessScope::for_tenant(uuid::Uuid::from_u128(1)),
+            AccessScope::for_tenants(vec![uuid::Uuid::from_u128(1), uuid::Uuid::from_u128(2)]),
+            AccessScope::deny_all(),
+            AccessScope::allow_all(),
+            AccessScope::single(ScopeConstraint::new(vec![ScopeFilter::in_tenant_subtree(
+                pep_properties::OWNER_TENANT_ID,
+                uuid::Uuid::from_u128(1),
+                true,
+                Vec::new(),
+            )])),
+        ] {
+            let original = build_scope_condition::<custom_prop_entity::Entity>(&scope);
+            let addressed = build_scope_condition_addressed::<custom_prop_entity::Entity>(
+                &scope,
+                ColumnAddress::Table,
+            )
+            .expect("table addressing never fails");
+            assert_eq!(render(original), render(addressed), "scope: {scope:?}");
+        }
+    }
+
+    /// Graph addressing qualifies by the pattern variable, not the table.
+    #[test]
+    fn graph_addressing_qualifies_by_the_pattern_variable() {
+        use sea_orm::sea_query::{PostgresQueryBuilder, Query};
+
+        let cond = build_scope_condition_addressed::<custom_prop_entity::Entity>(
+            &AccessScope::for_tenant(uuid::Uuid::from_u128(1)),
+            ColumnAddress::GraphElement("dst"),
+        )
+        .expect("an In filter is expressible in a pattern");
+
+        let sql = Query::select()
+            .expr(sea_orm::sea_query::Expr::val(1))
+            .cond_where(cond)
+            .to_owned()
+            .to_string(PostgresQueryBuilder);
+
+        assert!(sql.contains(r#""dst"."tenant_id""#), "{sql}");
+        assert!(
+            !sql.contains("custom_prop_test"),
+            "the element was qualified by its table: {sql}"
+        );
+    }
+
+    /// The three subquery arms must fail loudly under graph addressing.
+    /// Dropping them would be fail-closed in the letter and a silent empty
+    /// traversal in practice -- ADR-0002 Policy 2's hazard exactly.
+    #[test]
+    fn subquery_filters_are_refused_in_a_pattern_rather_than_dropped() {
+        let subtree =
+            AccessScope::single(ScopeConstraint::new(vec![ScopeFilter::in_tenant_subtree(
+                pep_properties::OWNER_TENANT_ID,
+                uuid::Uuid::from_u128(1),
+                true,
+                Vec::new(),
+            )]));
+
+        assert_eq!(
+            build_scope_condition_addressed::<custom_prop_entity::Entity>(
+                &subtree,
+                ColumnAddress::GraphElement("dst")
+            ),
+            Err(AddressError::SubqueryInPattern("InTenantSubtree"))
+        );
+
+        // The same scope is fine against a table.
+        assert!(
+            build_scope_condition_addressed::<custom_prop_entity::Entity>(
+                &subtree,
+                ColumnAddress::Table
+            )
+            .is_ok()
+        );
+    }
+
+    /// `deny_all` and `allow_all` mean the same under either addressing: they carry
+    /// no column, so there is nothing to address.
+    #[test]
+    fn the_degenerate_scopes_are_addressing_independent() {
+        for scope in [AccessScope::deny_all(), AccessScope::allow_all()] {
+            assert!(
+                build_scope_condition_addressed::<custom_prop_entity::Entity>(
+                    &scope,
+                    ColumnAddress::GraphElement("dst")
+                )
+                .is_ok(),
+                "{scope:?}"
+            );
+        }
+    }
+
+    /// The exact predicate this compiler emits under graph addressing, pinned
+    /// because it was executed inside a real `GRAPH_TABLE` on `PostgreSQL` 19
+    /// beta2 in that form and accepted:
+    ///
+    /// ```sql
+    /// MATCH (a IS node WHERE "a"."tenant_id" IN ('...') AND a.id = 5000)
+    ///      -[e IS edge]->
+    ///       (b IS node WHERE "b"."tenant_id" IN ('...'))
+    /// ```
+    ///
+    /// It returned the owning tenant's two neighbours and nothing for a foreign
+    /// tenant. If the rendering changes, this test fails and the executed
+    /// evidence stops applying.
+    #[test]
+    fn the_graph_predicate_renders_as_the_shape_that_was_executed() {
+        use sea_orm::sea_query::{PostgresQueryBuilder, Query};
+
+        let tenant = uuid::Uuid::from_u128(0x1234);
+        let cond = build_scope_condition_addressed::<custom_prop_entity::Entity>(
+            &AccessScope::for_tenant(tenant),
+            ColumnAddress::GraphElement("a"),
+        )
+        .expect("expressible");
+
+        let sql = Query::select()
+            .expr(sea_orm::sea_query::Expr::val(1))
+            .cond_where(cond)
+            .to_owned()
+            .to_string(PostgresQueryBuilder);
+        let predicate = sql.split(" WHERE ").nth(1).unwrap_or_default();
+
+        assert_eq!(
+            predicate,
+            format!(r#""a"."tenant_id" IN ('{tenant}')"#),
+            "the emitted predicate no longer matches the one that was executed"
         );
     }
 }

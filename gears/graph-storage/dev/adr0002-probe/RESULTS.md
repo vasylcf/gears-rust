@@ -86,3 +86,48 @@ grows with branching factor, so a denser graph would show a gap between the path
 form and the chained form that this fixture does not. The direction result is
 not fixture-dependent in the same way — an all-vertex probe is an all-vertex
 probe at any density.
+
+## Phase C — one scope compiler does serve both paths, with one qualification
+
+ADR-0002 says the only substantive change the Secure ORM core needs is to
+parameterise *how a resolved column is addressed*, and explicitly rejects
+writing a second PGQ-specific scope compiler. That is implemented here as
+`ColumnAddress::{Table, GraphElement(var)}` plus
+`build_scope_condition_addressed`, in `libs/toolkit-db/src/secure/cond.rs`.
+
+**The claim holds.** Table addressing reproduces the original compiler's output
+exactly — asserted by rendering both and comparing, across tenant scopes,
+`deny_all`, `allow_all` and a tenant-subtree scope. Graph addressing emits
+`"dst"."tenant_id"` instead of `"custom_prop_test"."tenant_id"`, and nothing
+else changes.
+
+**And the emitted predicate executes.** The compiler's output was spliced
+verbatim into an element pattern on PG19 beta2:
+
+```sql
+MATCH (a IS node WHERE "a"."tenant_id" IN ('...') AND a.id = 5000)
+     -[e IS edge]->
+      (b IS node WHERE "b"."tenant_id" IN ('...'))
+```
+
+It returned the owning tenant's two neighbours, and zero rows for a foreign
+tenant. Quoted identifiers are accepted inside `MATCH`, so `sea_query`'s
+escaping path — which ADR-0002 requires identifiers to go through — does not
+have to be bypassed.
+
+**The qualification the ADR's diagram does not carry.** Addressing is necessary
+but not sufficient. Three `ScopeFilter` arms compile to `col IN (SELECT …)`, and
+PG19 rejects a subquery inside a pattern, so in graph mode those arms have to
+**fail**, not render. They must also fail *loudly*: dropping a filter is
+fail-closed in the letter — the constraint vanishes and the scope compiles to
+`WHERE false` — and that is precisely the silent empty traversal Policy 2 exists
+to prevent. Implemented as `AddressError::SubqueryInPattern`, returned rather
+than swallowed, and pinned by a test asserting the same scope is still fine
+against a table.
+
+So the shape the core needs is not
+`build_scope_condition(scope, addressing) -> Condition`
+but
+`build_scope_condition(scope, addressing) -> Result<Condition, _>`,
+which is a signature change rather than an internal one.
+
