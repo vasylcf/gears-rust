@@ -11,16 +11,36 @@
 //! scoped, so the invariant holds — but it is worth naming: on the write side
 //! the tenant column is set by this layer, not enforced by the compiler.
 
-use sea_orm::{ActiveValue::Set, EntityTrait, sea_query::OnConflict};
+use sea_orm::sea_query::{Alias, Expr, ExprTrait, OnConflict};
+use sea_orm::{ActiveValue::Set, DbErr, EntityTrait};
 use time::OffsetDateTime;
-use toolkit_db::secure::{AccessScope, DBRunner, SecureInsertManyExt};
+use toolkit_db::secure::{AccessScope, DBRunner, ScopeError, SecureInsertManyExt};
 use uuid::Uuid;
 
 use crate::domain::error::DomainError;
-use crate::infra::storage::entity::{graph_edge, graph_node, graph_type};
+use crate::infra::storage::entity::{graph_edge, graph_node, graph_revision, graph_type};
 
 fn storage_err(e: impl std::fmt::Display) -> DomainError {
     DomainError::Storage(e.to_string())
+}
+
+/// Treat "the conflict clause matched every row" as success.
+///
+/// `ON CONFLICT DO NOTHING` that skips every row inserts nothing, and `SeaORM`
+/// reports that as [`DbErr::RecordNotInserted`]. For an upsert keyed on a
+/// natural key that is the success case, not a failure: the rows are already
+/// there, which is exactly what the caller asked for.
+///
+/// Without this, registering an already-registered type answers 500 and
+/// re-ingesting an unchanged batch of edges does the same — both contradicting
+/// the convergence this module's own comment promises, and `DESIGN`'s
+/// "idempotent, conflict-rejecting" registration. Nodes were unaffected: they
+/// conflict to `DO UPDATE`, which always reports a row.
+fn tolerate_nothing_inserted<T>(result: Result<T, ScopeError>) -> Result<(), DomainError> {
+    match result {
+        Ok(_) | Err(ScopeError::Db(DbErr::RecordNotInserted)) => Ok(()),
+        Err(e) => Err(storage_err(e)),
+    }
 }
 
 /// Upsert a GTS type and return its interned id.
@@ -36,7 +56,11 @@ pub async fn upsert_type<C: DBRunner>(
 ) -> Result<i32, DomainError> {
     let row = graph_type::ActiveModel {
         tenant_id: Set(tenant),
-        type_uuid: Set(Uuid::new_v4()),
+        // Deterministic, as the column documents ("Deterministic `UUIDv5` of
+        // the GTS identifier") and as DESIGN's type-registration requirement
+        // states. A random v4 let a retry manufacture a second identity for
+        // one type.
+        type_uuid: Set(Uuid::new_v5(&Uuid::NAMESPACE_URL, type_id.as_bytes())),
         type_id: Set(type_id.to_owned()),
         kind: Set(kind.to_owned()),
         json_schema: Set(serde_json::json!({})),
@@ -44,7 +68,7 @@ pub async fn upsert_type<C: DBRunner>(
         ..Default::default()
     };
 
-    graph_type::Entity::insert_many([row])
+    let inserted = graph_type::Entity::insert_many([row])
         .secure()
         .scope_unchecked(scope)
         .map_err(storage_err)?
@@ -54,8 +78,8 @@ pub async fn upsert_type<C: DBRunner>(
                 .to_owned(),
         )
         .exec(conn)
-        .await
-        .map_err(storage_err)?;
+        .await;
+    tolerate_nothing_inserted(inserted)?;
 
     interned_type_id(conn, scope, type_id).await
 }
@@ -193,7 +217,7 @@ pub async fn upsert_edges<C: DBRunner>(
         })
         .collect();
 
-    graph_edge::Entity::insert_many(models)
+    let inserted = graph_edge::Entity::insert_many(models)
         .secure()
         .scope_unchecked(scope)
         .map_err(storage_err)?
@@ -203,8 +227,73 @@ pub async fn upsert_edges<C: DBRunner>(
                 .to_owned(),
         )
         .exec(conn)
+        .await;
+    tolerate_nothing_inserted(inserted)?;
+
+    Ok(count)
+}
+
+/// Bump the tenant's write counter and return its new value.
+///
+/// Called inside the same transaction as the write it describes, so a revision
+/// a caller has observed always corresponds to committed data.
+///
+/// # Errors
+/// Returns [`DomainError::Storage`] when the write fails.
+pub async fn bump_revision<C: DBRunner>(
+    conn: &C,
+    scope: &AccessScope,
+    tenant: Uuid,
+) -> Result<u64, DomainError> {
+    let row = graph_revision::ActiveModel {
+        tenant_id: Set(tenant),
+        revision: Set(1),
+        updated_at: Set(OffsetDateTime::now_utc()),
+    };
+
+    let written = graph_revision::Entity::insert_many([row])
+        .secure()
+        .scope_unchecked(scope)
+        .map_err(storage_err)?
+        .on_conflict_raw(
+            OnConflict::column(graph_revision::Column::TenantId)
+                // Qualified with the table name on purpose: unqualified inside
+                // `DO UPDATE` it would be ambiguous with `excluded`, which
+                // always carries the literal 1 from the INSERT above.
+                .value(
+                    graph_revision::Column::Revision,
+                    Expr::col((Alias::new("graph_revision"), Alias::new("revision"))).add(1),
+                )
+                .value(graph_revision::Column::UpdatedAt, Expr::current_timestamp())
+                .to_owned(),
+        )
+        .exec_with_returning(conn)
         .await
         .map_err(storage_err)?;
 
-    Ok(count)
+    Ok(written
+        .first()
+        .map_or(0, |r| u64::try_from(r.revision).unwrap_or(0)))
+}
+
+/// Read the tenant's current write counter without changing it.
+///
+/// A tenant that has never been written has no row; that is revision zero.
+///
+/// # Errors
+/// Returns [`DomainError::Storage`] when the query fails.
+pub async fn current_revision<C: DBRunner>(
+    conn: &C,
+    scope: &AccessScope,
+) -> Result<u64, DomainError> {
+    use toolkit_db::secure::SecureEntityExt;
+
+    let row = graph_revision::Entity::find()
+        .secure()
+        .scope_with(scope)
+        .one(conn)
+        .await
+        .map_err(storage_err)?;
+
+    Ok(row.map_or(0, |r| u64::try_from(r.revision).unwrap_or(0)))
 }

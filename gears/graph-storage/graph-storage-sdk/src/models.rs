@@ -40,4 +40,6 @@ pub struct IngestResult {
     pub nodes_upserted: u64,
     /// Edges inserted or updated.
     pub edges_upserted: u64,
+    /// Revision the graph reached once this batch committed.
+    pub graph_revision: u64,
 }

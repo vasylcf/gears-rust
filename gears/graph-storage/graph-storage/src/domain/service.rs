@@ -4,7 +4,7 @@
 //! storage and authorization wiring can be exercised end to end. Ingest,
 //! search, traversal and analytics land here as their layers are implemented.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use graph_storage_sdk::{EdgeInput, GraphStats, IngestResult, NodeInput};
 use toolkit_db::{DBProvider, DbError};
@@ -102,11 +102,65 @@ impl GraphServices {
 
         let tenant = ctx.subject_tenant_id();
         let scope = AccessScope::for_tenant(tenant);
-        let conn = self
-            .db
-            .conn()
-            .map_err(|e| DomainError::Storage(e.to_string()))?;
 
+        // The provider's transaction closure is `for<'a>`, so anything it
+        // captures has to outlive every possible `'a` — references to locals do
+        // not. Everything the body needs is therefore owned by the future, and
+        // the domain error travels out in its own channel.
+        let stash: Arc<Mutex<Option<DomainError>>> = Arc::new(Mutex::new(None));
+        let stash_tx = Arc::clone(&stash);
+        let scope_tx = scope.clone();
+        let nodes_tx = nodes.to_vec();
+        let edges_tx = edges.to_vec();
+
+        let committed = self
+            .db
+            .transaction(move |tx| {
+                Box::pin(async move {
+                    match Self::ingest_in_tx(tx, &scope_tx, tenant, &nodes_tx, &edges_tx).await {
+                        Ok(v) => Ok(v),
+                        Err(e) => {
+                            *stash_tx.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(e);
+                            Err(DbError::Other(anyhow::anyhow!(
+                                "ingest rolled back; the reason travels outside this error"
+                            )))
+                        }
+                    }
+                })
+            })
+            .await;
+
+        match committed {
+            Ok(result) => Ok(result),
+            Err(db_err) => Err(stash
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take()
+                .unwrap_or_else(|| DomainError::Storage(db_err.to_string()))),
+        }
+    }
+
+    /// The body of [`Self::ingest`], running inside the transaction.
+    ///
+    /// # Why the transaction is here and not in the repository
+    ///
+    /// A batch is several statements — interning types, writing nodes,
+    /// resolving endpoints, writing edges, bumping the revision — and the
+    /// contract says the whole batch commits or none of it does (`DESIGN`,
+    /// bulk-ingest: "in one transaction, bumps the tenant graph revision").
+    /// Only this layer holds the provider, so only this layer can open it.
+    ///
+    /// The provider's closure must fail with `DbError` to roll back, which
+    /// would flatten a domain error into a string and lose the difference
+    /// between a malformed batch (400) and a broken database (500) — hence the
+    /// separate error channel above.
+    async fn ingest_in_tx<C: toolkit_db::secure::DBRunner>(
+        conn: &C,
+        scope: &AccessScope,
+        tenant: uuid::Uuid,
+        nodes: &[NodeInput],
+        edges: &[EdgeInput],
+    ) -> Result<IngestResult, DomainError> {
         // Resolve every referenced type before writing anything.
         let mut type_ids = std::collections::HashMap::new();
         for t in nodes
@@ -115,7 +169,7 @@ impl GraphServices {
             .chain(edges.iter().map(|e| e.type_id.as_str()))
         {
             if !type_ids.contains_key(t) {
-                let id = ingest_repo::interned_type_id(&conn, &scope, t).await?;
+                let id = ingest_repo::interned_type_id(conn, scope, t).await?;
                 type_ids.insert(t.to_owned(), id);
             }
         }
@@ -124,16 +178,18 @@ impl GraphServices {
             .iter()
             .map(|n| (n.node_key.clone(), type_ids[&n.type_id], n.name.clone()))
             .collect();
-        let nodes_upserted = ingest_repo::upsert_nodes(&conn, &scope, tenant, node_rows).await?;
+        let nodes_upserted = ingest_repo::upsert_nodes(conn, scope, tenant, node_rows).await?;
 
-        // Endpoints may arrive in this batch or already exist.
+        // Endpoints may arrive in this batch or already exist, which is why
+        // this read happens after the node write and inside the same
+        // transaction.
         let mut endpoint_keys: Vec<String> = edges
             .iter()
             .flat_map(|e| [e.from.clone(), e.to.clone()])
             .collect();
         endpoint_keys.sort();
         endpoint_keys.dedup();
-        let ids = ingest_repo::resolve_node_ids(&conn, &scope, &endpoint_keys).await?;
+        let ids = ingest_repo::resolve_node_ids(conn, scope, &endpoint_keys).await?;
 
         let mut edge_rows = Vec::with_capacity(edges.len());
         for e in edges {
@@ -146,11 +202,20 @@ impl GraphServices {
             let edge_key = format!("{}|{}|{}", e.type_id, e.from, e.to);
             edge_rows.push((edge_key, type_ids[&e.type_id], src, dst));
         }
-        let edges_upserted = ingest_repo::upsert_edges(&conn, &scope, tenant, edge_rows).await?;
+        let edges_upserted = ingest_repo::upsert_edges(conn, scope, tenant, edge_rows).await?;
+
+        // A batch that changed nothing must not move the revision: a consumer
+        // polling it would see churn that did not happen.
+        let graph_revision = if nodes_upserted == 0 && edges_upserted == 0 {
+            ingest_repo::current_revision(conn, scope).await?
+        } else {
+            ingest_repo::bump_revision(conn, scope, tenant).await?
+        };
 
         Ok(IngestResult {
             nodes_upserted,
             edges_upserted,
+            graph_revision,
         })
     }
 
