@@ -2272,6 +2272,7 @@ dependencies = [
  "cf-gears-file-parser",
  "cf-gears-file-storage",
  "cf-gears-gear-orchestrator",
+ "cf-gears-graph-storage",
  "cf-gears-grpc-hub",
  "cf-gears-mini-chat",
  "cf-gears-nodes-registry",
@@ -2441,6 +2442,64 @@ dependencies = [
  "tower",
  "tracing",
  "utoipa",
+ "uuid",
+]
+
+[[package]]
+name = "cf-gears-graph-storage"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "aws-lc-rs",
+ "axum",
+ "cf-gears-authz-resolver",
+ "cf-gears-authz-resolver-sdk",
+ "cf-gears-graph-storage-sdk",
+ "cf-gears-test-containers",
+ "cf-gears-toolkit",
+ "cf-gears-toolkit-canonical-errors",
+ "cf-gears-toolkit-db",
+ "cf-gears-toolkit-db-macros",
+ "cf-gears-toolkit-gts",
+ "cf-gears-toolkit-http",
+ "cf-gears-toolkit-macros",
+ "cf-gears-toolkit-odata",
+ "cf-gears-toolkit-odata-macros",
+ "cf-gears-toolkit-security",
+ "gts",
+ "hex",
+ "http",
+ "jsonschema",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "testcontainers",
+ "testcontainers-modules",
+ "thiserror 2.0.18",
+ "time",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "utoipa",
+ "uuid",
+]
+
+[[package]]
+name = "cf-gears-graph-storage-sdk"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "cf-gears-toolkit-canonical-errors",
+ "cf-gears-toolkit-gts",
+ "cf-gears-toolkit-odata",
+ "cf-gears-toolkit-odata-macros",
+ "cf-gears-toolkit-security",
+ "serde_json",
+ "thiserror 2.0.18",
+ "time",
+ "tokio-util",
  "uuid",
 ]
 
@@ -8057,11 +8116,12 @@ dependencies = [
 
 [[package]]
 name = "pgvector"
-version = "0.4.1"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc58e2d255979a31caa7cabfa7aac654af0354220719ab7a68520ae7a91e8c0b"
+checksum = "3673cba5b9a124916096a423b806a9f29620972c6c97b08db5f2053e9428b481"
 dependencies = [
  "serde",
+ "sqlx",
 ]
 
 [[package]]
@@ -9944,6 +10004,7 @@ checksum = "546040c653a705e60ec65ecd3191a809603734bebbc225775916dea9ae409b31"
 dependencies = [
  "chrono",
  "ordered-float 4.6.0",
+ "pgvector",
  "rust_decimal",
  "sea-query-derive",
  "serde_json",
@@ -9971,6 +10032,7 @@ version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4eaa419cdb9157da1361186b1959983eb2ea0dcb9a3c69dc45c449ecb2af8fef"
 dependencies = [
+ "pgvector",
  "sea-query",
  "sqlx",
 ]
