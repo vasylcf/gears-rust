@@ -11,13 +11,13 @@ use authn_resolver as _;
 use authz_resolver as _;
 #[cfg(feature = "credstore")]
 use credstore as _;
-#[cfg(feature = "graph-storage")]
-use graph_storage as _;
 #[cfg(all(feature = "file-parser", not(feature = "oop-example")))]
 use file_parser as _;
 #[cfg(feature = "file-storage")]
 use file_storage as _;
 use gear_orchestrator as _;
+#[cfg(feature = "graph-storage")]
+use graph_storage as _;
 #[cfg(feature = "grpc-hub")]
 use grpc_hub as _;
 #[cfg(feature = "nodes-registry")]
