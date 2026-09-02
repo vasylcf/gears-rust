@@ -4,7 +4,7 @@ date: 2026-08-19
 decision-makers: Graph Storage design review
 ---
 
-# ADR-0006: SQL/PGQ is emitted from typed input, and a graph pattern proposes candidates rather than authorizing them
+# ADR-0005: SQL/PGQ is emitted from typed input, and a graph pattern proposes candidates rather than authorizing them
 
 
 <!-- toc -->
@@ -37,7 +37,7 @@ decision-makers: Graph Storage design review
 
 [ADR-0001](./0001-cpt-cf-graph-storage-adr-single-postgres-store.md) commits this gear to SQL/PGQ from its first release. It does not say how a gear *emits* `GRAPH_TABLE`, because when it was written nobody knew whether a gear could. Two obstacles looked structural.
 
-`sea_query`, the builder every gear query goes through, has no AST node for `GRAPH_TABLE`. And the platform forbids raw SQL outside migration infrastructure ([11_database_patterns.md](../../../docs/toolkit_unified_system/11_database_patterns.md)), so the obvious workaround — assemble the statement as a string — is not available either. Between them, the ADR-0001 decision had no implementation path, and the shipped traversal was the two-query scoped hop.
+`sea_query`, the builder every gear query goes through, has no AST node for `GRAPH_TABLE`. And the platform forbids raw SQL outside migration infrastructure ([11_database_patterns.md](../../../../docs/toolkit_unified_system/11_database_patterns.md)), so the obvious workaround — assemble the statement as a string — is not available either. Between them, the ADR-0001 decision had no implementation path, and the shipped traversal was the two-query scoped hop.
 
 A development stand has since built the backend and measured it, which turns the question from "can this be done" into "on what terms". Three things need settling, and none of them is answered by ADR-0001:
 
@@ -96,6 +96,7 @@ Concretely:
 **Negative:**
 
 - The custom expression is raw SQL, which gear code is not permitted to write. On the development stand this is a deliberate, contained exception; it is not a licence, and the production home of the emitting code is the open question below.
+- **Found while building the prototype: that exception is now spent.** The platform layer this ADR asked for (ask 3) exists — `toolkit-sea-orm-pgq` for the syntax and `toolkit-db::secure::pgq` for the scope injection — and the gear is built on it, so it writes no raw SQL for `GRAPH_TABLE` and carries no builder of its own. Two consequences of using the platform layer rather than a local one are worth stating here, because they are not visible from the ADR's own reasoning: the property graph is declared **once**, in Rust, and both the `CREATE PROPERTY GRAPH` the migration runs and every `MATCH` the engine builds are generated from that one declaration, so the DDL and the queries cannot disagree about labels or `PROPERTIES`; and the scope is embedded per element by the platform rather than carried as a tenant bound by the gear, which makes point 4 below (a pattern proposes candidates, an ordinary scoped query authorizes them) an optimization of the read path rather than the security boundary it was when this ADR was written. The remaining fallback reason is unchanged: a scope the pattern cannot carry is served by the two-query hop, with the reason logged.
 - The closed vocabulary has to grow with every new query shape. That is the intended cost — each addition is a reviewed change rather than a new string — but it does mean pattern shapes are not open-ended.
 - A gear cannot render a CTE or pattern statement without executing it, because the secure ORM's statement builder is crate-private. Shape assertions therefore sit on the gear's own helpers rather than on whole statements, and the invariants inside a statement are tested where they live.
 
@@ -146,7 +147,7 @@ Concretely:
 
 ## More Information
 
-The measurements behind every number here are in [SPIKE-pg19-sqlpgq.md](../SPIKE-pg19-sqlpgq.md) and in the development stand's findings log. The platform's rule on raw SQL is [11_database_patterns.md](../../../docs/toolkit_unified_system/11_database_patterns.md); the platform's CTE policy, which exempts dialect-specific assembly inside `toolkit-db` itself, is [ADR 0001: Safe CTE Support in the Secure ORM](../../../docs/arch/secure-orm/ADR/0001-secure-cte-policy.md).
+The measurements behind every number here are in [SPIKE-pg19-sqlpgq.md](../SPIKE-pg19-sqlpgq.md) and in the development stand's findings log. The platform's rule on raw SQL is [11_database_patterns.md](../../../../docs/toolkit_unified_system/11_database_patterns.md); the platform's CTE policy, which exempts dialect-specific assembly inside `toolkit-db` itself, is [ADR 0001: Safe CTE Support in the Secure ORM](../../../../docs/arch/secure-orm/ADR/0001-secure-cte-policy.md).
 
 ## What full SQL/PGQ support needs from the platform
 

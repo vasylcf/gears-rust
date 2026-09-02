@@ -182,7 +182,7 @@ Several platform initiatives need to persist and query relationships between het
 
 - Requires PostgreSQL 16 or later with the `pgvector` extension and permission to create extensions in the gear's database; no other PostgreSQL extension is required. The SQL/PGQ graph-query backend additionally requires PostgreSQL 19: on an earlier server the gear starts on its iterative-CTE and two-query backends and reports SQL/PGQ as an unavailable capability rather than failing readiness (see ADR-0001). A deployment that wants SQL/PGQ before PostgreSQL 19 GA (expected September/October 2026) runs a pinned PG19 beta image with pgvector built from a pinned source revision
 - Requires an embedding provider: either an in-process ONNX model runtime bundled with the gear or network access to a remote embedding inference endpoint, per deployment configuration
-- Whole-graph analytics is a separate deployment unit (`graph-analytics`, ADR-0007) that reads this gear's schema over a read-only role; a deployment that installs it must budget memory for that gear's topology ceiling, and one that does not gets projections without metric annotations
+- Whole-graph analytics is a separate deployment unit (`graph-analytics`, graph-analytics ADR-0002) that reads this gear's schema over a read-only role; a deployment that installs it must budget memory for that gear's topology ceiling, and one that does not gets projections without metric annotations
 - Depends on the file-storage gear when heavy-content offloading is enabled; the graph gear itself never stores blobs
 
 ## 4. Scope
@@ -220,7 +220,7 @@ Several platform initiatives need to persist and query relationships between het
 - A bundled visualization UI — consumers build UIs on the projection API
 - Bitemporal versioning and node-level history — the graph reflects the latest ingested state; history is a future consideration
 - Undelete, and a retention job that hard-deletes tombstoned rows past a configurable window — both p2; hard delete additionally has to settle cascade ordering, key reuse after purge, and vector/full-text index reconciliation, none of which need to block v1
-- Whole-graph analytics computation — degree, PageRank, components, betweenness and community detection move to the `graph-analytics` gear (ADR-0007); this gear stores the graph they read and annotates projections from their cache
+- Whole-graph analytics computation — degree, PageRank, components, betweenness and community detection move to the `graph-analytics` gear (its ADR-0002); this gear stores the graph they read and annotates projections from their cache
 - Embedding model training or fine-tuning
 
 ## 5. Functional Requirements
@@ -484,7 +484,9 @@ The system **MUST** serve a UI-oriented neighborhood projection: given one entit
 
 - [ ] `p1` - **ID**: `cpt-cf-graph-storage-fr-tabular-projection`
 
-The system **MUST** project nodes matching criteria into tabular results: selection by explicit node-key or identifier lists, by type family, by label, and by filters over indexed payload attributes. Filtering, ordering and pagination **MUST** use the platform OData binding — exactly the five accepted system query options (`$filter`, `$orderby`, `$select`, `$top`, `$skiptoken`, with `cursor` as the alias for `$skiptoken`) — and any other option **MUST** be rejected rather than ignored. `$filter` **MUST** be admitted only over payload paths the type declares in its `index` trait, addressed by the same path in OData syntax (`payload/severity`), and a filter over an undeclared path **MUST** be rejected with an error naming the path and the declared alternatives. Responses **MUST** return stable pages suitable for table rendering, with continuation tokens carried in the platform `CursorV1` extended with the observed graph revision rather than in a second token format.
+The system **MUST** project nodes matching criteria into tabular results: selection by explicit node-key or identifier lists, by type family, by label, and by filters over indexed payload attributes. Filtering, ordering and pagination **MUST** use the platform OData binding — exactly the five accepted system query options (`$filter`, `$orderby`, `$select`, `$top`, `$skiptoken`, with `cursor` as the alias for `$skiptoken`) — and any other option **MUST** be rejected rather than ignored. `$filter` **MUST** be admitted only over payload paths the type declares in its `index` trait, addressed by the same path in OData syntax (`payload/severity`), and a filter over an undeclared path **MUST** be rejected with an error naming the path and the declared alternatives. Responses **MUST** return stable pages suitable for table rendering, with continuation tokens carried in the platform `CursorV1` rather than in a second token format.
+
+> **Found while building the prototype.** An earlier wording had the token be `CursorV1` *extended with the observed graph revision*. A gear cannot extend it: `CursorV1` has no revision member, and the platform page envelope carries only the items and the cursors. Since binding to the platform's `OData` surface is itself required here, tabular projection is the one read path that does not report `(source_epoch, graph_revision)`; every other one does. Closing that needs a platform slot for it — see DESIGN § Read Consistency Contract.
 
 - **Rationale**: "Show me all objects matching these criteria as a table" is a validated scenario and the standard list contract for platform UIs.
 - **Actors**: `cpt-cf-graph-storage-actor-data-analyst`, `cpt-cf-graph-storage-actor-consumer-gear`
@@ -493,7 +495,7 @@ The system **MUST** project nodes matching criteria into tabular results: select
 
 Whole-graph analytics — degree, PageRank, connected components, betweenness
 centrality and community detection — is computed by the separate
-`graph-analytics` gear (ADR-0007), which reads this gear's topology over a
+`graph-analytics` gear (its ADR-0002), which reads this gear's topology over a
 read-only role and owns the revision-keyed metrics cache. The requirements below
 are what **this** gear owes that boundary; the algorithms, their determinism
 contracts and the asynchronous job surface belong to the analytics gear's own
@@ -591,6 +593,15 @@ The system **MUST** expose all capabilities over a versioned REST API following 
 - **Rationale**: The REST surface is how UIs and non-Rust consumers integrate.
 - **Actors**: `cpt-cf-graph-storage-actor-consumer-gear`, `cpt-cf-graph-storage-actor-graph-explorer`, `cpt-cf-graph-storage-actor-data-analyst`
 
+#### Element Audit Envelope
+
+- [ ] `p1` - **ID**: `cpt-cf-graph-storage-fr-audit-envelope`
+
+Every node and edge returned by any read surface **MUST** carry a gear-assigned envelope: tenant, key, creation and last-update timestamps, the soft-delete tombstone, and the subject behind each of those three verbs. The acting party **MUST** be expressed as a platform subject (`subject_id` plus optional `subject_type`) rather than as a user identifier, so an automation, a service integration and a person are all representable. The envelope **MUST** be read-only on every write surface and **MUST NOT** be declared by the GTS types producers register or derive from, which describe only producer-authored fields. Per-element change history is out of scope: the current state is stored, and history is reconstructed from emitted change events and `ingest_audit`.
+
+- **Rationale**: Who wrote an element and when is the first question asked of any stored record, and the answer has to exist before it is needed rather than be added after. Keeping it out of the GTS type keeps a type usable as a static registry instance, where runtime timestamps have no value to carry.
+- **Actors**: `cpt-cf-graph-storage-actor-platform-admin`, `cpt-cf-graph-storage-actor-consumer-gear`, `cpt-cf-graph-storage-actor-data-analyst`
+
 #### Typed SDK Client
 
 - [ ] `p1` - **ID**: `cpt-cf-graph-storage-fr-sdk-client`
@@ -671,7 +682,7 @@ Depth-3 neighborhood projection **MUST** answer within 1 second at p95 on a tena
 
 - [ ] `p2` - **ID**: `cpt-cf-graph-storage-nfr-analytics-memory`
 
-The topology read surface **MUST** expose at most node keys with their interned type and typed edge pairs — never payloads, composed search text, embeddings or chunk contents — and the grant backing it **MUST** make the wider columns unreadable rather than merely unused. The ceilings that bound a computation's memory move with the computation to the `graph-analytics` gear (ADR-0007).
+The topology read surface **MUST** expose at most node keys with their interned type and typed edge pairs — never payloads, composed search text, embeddings or chunk contents — and the grant backing it **MUST** make the wider columns unreadable rather than merely unused. The ceilings that bound a computation's memory move with the computation to the `graph-analytics` gear (its ADR-0002).
 
 - **Threshold**: Configurable ceilings, defaults 1,000,000 nodes / 10,000,000 edges / 2 GiB estimated topology budget; topology-only memory footprint verified by profiling tests
 - **Rationale**: Keeping analytics topology-only is what makes reading a million-node graph affordable at all; expressing it as a database grant means a future change to the reading code cannot quietly widen it.
@@ -899,7 +910,7 @@ The gear **MUST** maintain at least 85% line coverage across its library crates.
 | Types Registry gear | Platform registration of the gear's GTS base types and permission instances | p1 |
 | Embedding provider | In-process ONNX runtime or remote inference endpoint producing fixed-dimension vectors | p1 |
 | File Storage gear | Blob storage for heavy content referenced from node payloads | p2 |
-| ToolKit `toolkit-db` safe-CTE API | Secure execution path for single-statement traversal (scoped CTE, `GRAPH_TABLE`) under a compiled access scope. Not required for correctness — bounded traversal ships as two scoped queries per hop — but required for single-statement composition of vector, graph and full-text retrieval. Delivered in two halves: the scoped-CTE half merged as `toolkit-db` PR #4584 (ADR-0001), the SQL/PGQ half in review as PR #4639 (ADR-0002, `SecureGraphSelect`). The gear's hop has been rebuilt against both and renders as one scoped statement | p2 |
+| ToolKit `toolkit-db` safe-CTE API | Secure execution path for single-statement traversal (scoped CTE, `GRAPH_TABLE`) under a compiled access scope. Not required for correctness — bounded traversal ships as two scoped queries per hop — but required for single-statement composition of vector, graph and full-text retrieval. Delivered in two halves: the scoped-CTE half merged as `toolkit-db` PR #4584 (secure-orm ADR-0001), the SQL/PGQ half in review as PR #4639 (secure-orm ADR-0002, `SecureGraphSelect`). The gear's hop has been rebuilt against both and renders as one scoped statement | p2 |
 
 ## 11. Assumptions
 
@@ -915,10 +926,10 @@ The gear **MUST** maintain at least 85% line coverage across its library crates.
 |------|--------|------------|
 | Dense hub nodes make traversal and projection slow or unreadable | Interactive scenarios miss latency targets | Node budgets, per-hop edge-type filters, degree-ordered truncation, edge-type exclusion in analytics |
 | JSONB attribute indexing degrades as payloads grow | Filter queries slow down; index bloat | Payload size ceiling, indexable-attribute discipline in ontology design, heavy-content offloading |
-| Embedding model change invalidates stored vectors | Vector search quality silently degrades | Provider identity and dimension pinned in configuration; readiness identity guard blocks vector search on mismatch; operator-triggered resumable re-embedding lifecycle with checkpoints and atomic identity cutover (ADR-0005) |
+| Embedding model change invalidates stored vectors | Vector search quality silently degrades | Provider identity and dimension pinned in configuration; readiness identity guard blocks vector search on mismatch; operator-triggered resumable re-embedding lifecycle with checkpoints and atomic identity cutover (ADR-0004) |
 | Community detection and sampled betweenness differ from prototype outputs | Consumers expecting NetworkX-identical numbers are surprised | PRD explicitly waives numeric parity; determinism and ordering guarantees are documented per algorithm |
 | A single tenant's ingest load starves others | Platform-wide latency degradation | Batch size limits, per-tenant concurrency gates, operation-level permissions, observability of per-tenant load |
-| Analytics load starves the interactive path | Ingest and search miss latency targets | Analytics runs as its own gear with its own CPU, memory and connection budget (ADR-0007), so the two cannot share a pool |
+| Analytics load starves the interactive path | Ingest and search miss latency targets | Analytics runs as its own gear with its own CPU, memory and connection budget (graph-analytics ADR-0002), so the two cannot share a pool |
 | Shared ontologies evolve incompatibly across producers | Ingest failures or semantic drift between producers | Immutable schemas per GTS version, conflict-rejecting registration, family patterns that keep older derived types valid |
 | PostgreSQL 19 GA slips, or a PG19 beta regression hits the pinned stack | The gear ships on a beta database longer than planned | The stack is pinned (beta image + pgvector revision) and validated by the PG19 spike and the prototype's full test suite; the iterative-CTE backend can serve the whole fixed-depth API if a PGQ-specific regression appears; re-pin to stock at GA |
 | SQL/PGQ variable-length paths arrive later than PG20 | The CTE backend carries variable-depth expansion longer | The traversal port isolates the split; consumers see no API difference; a dedicated traversal mirror remains the measured-bottleneck contingency (ADR-0001) |
