@@ -7,7 +7,7 @@ project_root = ".."
 [kits.gears]
 format = "CFS"
 path = ".."
-version = "0.1.0"
+version = "0.2.0"
 install_mode = "register"
 tool_risk_fingerprint = "3bdcd30d3029ad80e74c76eb0b57d80ad617a51191eb9d9307b2921c65f5dc16"
 
@@ -18,6 +18,325 @@ resolution_basis = "local_path"
 effective_source = ".."
 verified = "local"
 freshness = "local"
+
+[kits.gear]
+format = "CFS"
+path = "config/kits/gear"
+install_mode = "copy"
+version = "0.3.3"
+
+[kits.gear.resources]
+[kits.gear.resources.gear_intent_template]
+path = "config/kits/gear/artifacts/GEAR-INTENT/template.md"
+kind = "template"
+public = false
+description = "GEAR-INTENT artifact template"
+
+[kits.gear.resources.gear_intent_rules]
+path = "config/kits/gear/artifacts/GEAR-INTENT/rules.md"
+kind = "other"
+public = false
+description = "GEAR-INTENT authoring and validation rules"
+
+[kits.gear.resources.gear_intent_checklist]
+path = "config/kits/gear/artifacts/GEAR-INTENT/checklist.md"
+kind = "checklist"
+public = false
+description = "GEAR-INTENT semantic review checklist"
+
+[kits.gear.resources.gear_intent_example]
+path = "config/kits/gear/artifacts/GEAR-INTENT/examples/example.md"
+kind = "other"
+public = false
+description = "GEAR-INTENT example artifact"
+
+[kits.gear.resources.gear_prd_template]
+path = "config/kits/gear/artifacts/GEAR-PRD/template.md"
+kind = "template"
+public = false
+description = "GEAR-PRD artifact template"
+
+[kits.gear.resources.gear_prd_rules]
+path = "config/kits/gear/artifacts/GEAR-PRD/rules.md"
+kind = "other"
+public = false
+description = "GEAR-PRD authoring and validation rules"
+
+[kits.gear.resources.gear_prd_checklist]
+path = "config/kits/gear/artifacts/GEAR-PRD/checklist.md"
+kind = "checklist"
+public = false
+description = "GEAR-PRD semantic review checklist"
+
+[kits.gear.resources.gear_prd_example]
+path = "config/kits/gear/artifacts/GEAR-PRD/examples/example.md"
+kind = "other"
+public = false
+description = "GEAR-PRD example artifact"
+
+[kits.gear.resources.gear_design_template]
+path = "config/kits/gear/artifacts/GEAR-DESIGN/template.md"
+kind = "template"
+public = false
+description = "GEAR-DESIGN artifact template"
+
+[kits.gear.resources.gear_design_rules]
+path = "config/kits/gear/artifacts/GEAR-DESIGN/rules.md"
+kind = "other"
+public = false
+description = "GEAR-DESIGN authoring and validation rules"
+
+[kits.gear.resources.gear_design_checklist]
+path = "config/kits/gear/artifacts/GEAR-DESIGN/checklist.md"
+kind = "checklist"
+public = false
+description = "GEAR-DESIGN semantic review checklist"
+
+[kits.gear.resources.gear_design_example]
+path = "config/kits/gear/artifacts/GEAR-DESIGN/examples/example.md"
+kind = "other"
+public = false
+description = "GEAR-DESIGN example artifact"
+
+[kits.gear.resources.gear_adr_template]
+path = "config/kits/gear/artifacts/GEAR-ADR/template.md"
+kind = "template"
+public = false
+description = "GEAR-ADR artifact template"
+
+[kits.gear.resources.gear_adr_rules]
+path = "config/kits/gear/artifacts/GEAR-ADR/rules.md"
+kind = "other"
+public = false
+description = "GEAR-ADR authoring and validation rules"
+
+[kits.gear.resources.gear_adr_checklist]
+path = "config/kits/gear/artifacts/GEAR-ADR/checklist.md"
+kind = "checklist"
+public = false
+description = "GEAR-ADR semantic review checklist"
+
+[kits.gear.resources.gear_adr_example]
+path = "config/kits/gear/artifacts/GEAR-ADR/examples/example.md"
+kind = "other"
+public = false
+description = "GEAR-ADR example artifact"
+
+[kits.gear.resources.gear_decomposition_template]
+path = "config/kits/gear/artifacts/GEAR-DECOMPOSITION/template.md"
+kind = "template"
+public = false
+description = "GEAR-DECOMPOSITION artifact template"
+
+[kits.gear.resources.gear_decomposition_rules]
+path = "config/kits/gear/artifacts/GEAR-DECOMPOSITION/rules.md"
+kind = "other"
+public = false
+description = "GEAR-DECOMPOSITION authoring and validation rules"
+
+[kits.gear.resources.gear_decomposition_checklist]
+path = "config/kits/gear/artifacts/GEAR-DECOMPOSITION/checklist.md"
+kind = "checklist"
+public = false
+description = "GEAR-DECOMPOSITION semantic review checklist"
+
+[kits.gear.resources.gear_decomposition_example]
+path = "config/kits/gear/artifacts/GEAR-DECOMPOSITION/examples/example.md"
+kind = "other"
+public = false
+description = "GEAR-DECOMPOSITION example artifact"
+
+[kits.gear.resources.gear_feature_template]
+path = "config/kits/gear/artifacts/GEAR-FEATURE/template.md"
+kind = "template"
+public = false
+description = "GEAR-FEATURE artifact template"
+
+[kits.gear.resources.gear_feature_rules]
+path = "config/kits/gear/artifacts/GEAR-FEATURE/rules.md"
+kind = "other"
+public = false
+description = "GEAR-FEATURE authoring and validation rules"
+
+[kits.gear.resources.gear_feature_checklist]
+path = "config/kits/gear/artifacts/GEAR-FEATURE/checklist.md"
+kind = "checklist"
+public = false
+description = "GEAR-FEATURE semantic review checklist"
+
+[kits.gear.resources.gear_feature_example]
+path = "config/kits/gear/artifacts/GEAR-FEATURE/examples/example.md"
+kind = "other"
+public = false
+description = "GEAR-FEATURE example artifact"
+
+[kits.gear.resources.gear_impl_report_template]
+path = "config/kits/gear/artifacts/GEAR-IMPL-REPORT/template.md"
+kind = "template"
+public = false
+description = "GEAR-IMPL-REPORT artifact template"
+
+[kits.gear.resources.gear_impl_report_rules]
+path = "config/kits/gear/artifacts/GEAR-IMPL-REPORT/rules.md"
+kind = "other"
+public = false
+description = "GEAR-IMPL-REPORT authoring and validation rules"
+
+[kits.gear.resources.gear_impl_report_checklist]
+path = "config/kits/gear/artifacts/GEAR-IMPL-REPORT/checklist.md"
+kind = "checklist"
+public = false
+description = "GEAR-IMPL-REPORT semantic review checklist"
+
+[kits.gear.resources.gear_impl_report_example]
+path = "config/kits/gear/artifacts/GEAR-IMPL-REPORT/examples/example.md"
+kind = "other"
+public = false
+description = "GEAR-IMPL-REPORT example artifact"
+
+[kits.gear.resources.scripts]
+path = "config/kits/gear/scripts"
+kind = "directory"
+public = false
+description = "Deterministic gear checks (find_similar_gears.py, check_gear_layout.py, check_phase_gates.py)"
+
+[kits.gear.resources.gear_catalog]
+path = "config/kits/gear/data/gear-catalog.json"
+kind = "other"
+public = false
+description = "Machine-readable gear dependency graph for similar-gear lookup"
+
+[kits.gear.resources.skill]
+path = "config/kits/gear/SKILL.md"
+kind = "skill"
+public = true
+description = "Kit SKILL.md for agent navigation and pipeline routing"
+generated_targets = ["installed"]
+user_modifiable = false
+
+[kits.gear.resources.agents]
+path = "config/kits/gear/AGENTS.md"
+kind = "rule"
+public = true
+description = "Kit AGENTS.md quick reference for agent integration"
+generated_targets = ["installed"]
+user_modifiable = false
+
+[kits.gear.resources.workflow_intake]
+path = "config/kits/gear/workflows/intake.md"
+kind = "skill"
+public = true
+description = "Classify a gear request, similar-gear lookup, reuse profile, confirmed route (GEAR-INTENT)"
+generated_targets = ["installed"]
+user_modifiable = false
+
+[kits.gear.resources.workflow_doc_prd]
+path = "config/kits/gear/workflows/doc-prd.md"
+kind = "skill"
+public = true
+description = "Gear PRD authoring preset (GEAR-PRD via cf-write-docs)"
+generated_targets = ["installed"]
+user_modifiable = false
+
+[kits.gear.resources.workflow_doc_design]
+path = "config/kits/gear/workflows/doc-design.md"
+kind = "skill"
+public = true
+description = "Gear design authoring preset (GEAR-DESIGN via cf-write-docs)"
+generated_targets = ["installed"]
+user_modifiable = false
+
+[kits.gear.resources.workflow_doc_adr]
+path = "config/kits/gear/workflows/doc-adr.md"
+kind = "skill"
+public = true
+description = "Gear ADR authoring preset (GEAR-ADR via cf-write-docs)"
+generated_targets = ["installed"]
+user_modifiable = false
+
+[kits.gear.resources.workflow_doc_feature]
+path = "config/kits/gear/workflows/doc-feature.md"
+kind = "skill"
+public = true
+description = "Gear feature authoring preset (GEAR-FEATURE via cf-write-docs)"
+generated_targets = ["installed"]
+user_modifiable = false
+
+[kits.gear.resources.workflow_decompose]
+path = "config/kits/gear/workflows/decompose.md"
+kind = "skill"
+public = true
+description = "Gear decomposition preset with the phase-gate check (GEAR-DECOMPOSITION)"
+generated_targets = ["installed"]
+user_modifiable = false
+
+[kits.gear.resources.workflow_scaffold]
+path = "config/kits/gear/workflows/scaffold.md"
+kind = "skill"
+public = true
+description = "Scaffold gear crates and the full registration surface, exiting through the scaffold gate"
+generated_targets = ["installed"]
+user_modifiable = false
+
+[kits.gear.resources.workflow_implement]
+path = "config/kits/gear/workflows/implement.md"
+kind = "skill"
+public = true
+description = "Phased gear implementation over cf-coding with per-phase gates and GEAR-IMPL-REPORTs"
+generated_targets = ["installed"]
+user_modifiable = false
+
+[kits.gear.resources.workflow_lint]
+path = "config/kits/gear/workflows/lint.md"
+kind = "skill"
+public = true
+description = "Review and configure a gear's deterministic-check posture; draft new-rule proposals"
+generated_targets = ["installed"]
+user_modifiable = false
+
+[kits.gear.resources.workflow_pr]
+path = "config/kits/gear/workflows/pr.md"
+kind = "skill"
+public = true
+description = "Assemble the review-ready gear PR package: commits, body digest, review ledger, size check"
+generated_targets = ["installed"]
+user_modifiable = false
+
+[kits.gear.resources.constraints]
+path = "config/kits/gear/constraints.toml"
+kind = "constraints"
+public = false
+description = "Kit structural constraints (heading outlines, ID kinds, cross-references)"
+user_modifiable = false
+
+[kits.gear.resources.constraints.artifacts]
+[kits.gear.resources.constraints.artifacts.GEAR-INTENT]
+template = "gear_intent_template"
+examples = "gear_intent_example"
+
+[kits.gear.resources.constraints.artifacts.GEAR-PRD]
+template = "gear_prd_template"
+examples = "gear_prd_example"
+
+[kits.gear.resources.constraints.artifacts.GEAR-DESIGN]
+template = "gear_design_template"
+examples = "gear_design_example"
+
+[kits.gear.resources.constraints.artifacts.GEAR-ADR]
+template = "gear_adr_template"
+examples = "gear_adr_example"
+
+[kits.gear.resources.constraints.artifacts.GEAR-DECOMPOSITION]
+template = "gear_decomposition_template"
+examples = "gear_decomposition_example"
+
+[kits.gear.resources.constraints.artifacts.GEAR-FEATURE]
+template = "gear_feature_template"
+examples = "gear_feature_example"
+
+[kits.gear.resources.constraints.artifacts.GEAR-IMPL-REPORT]
+template = "gear_impl_report_template"
+examples = "gear_impl_report_example"
 
 [install]
 version_source = "project_config"

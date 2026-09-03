@@ -1,0 +1,4301 @@
+{
+  "generated": "2026-09-02",
+  "source_repo": "constructorfabric/gears-rust",
+  "source_commit": "0ed3045a6",
+  "gear_count": 60,
+  "gears": [
+    {
+      "id": "approval-service",
+      "tier": "service",
+      "parent": null,
+      "path": "gears/approval-service",
+      "runtime_name": null,
+      "capabilities": [],
+      "gear_deps": [],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [],
+      "packages": [],
+      "has_sdk_crate": false,
+      "has_impl_crate": false,
+      "crate_count": 0,
+      "docs": {
+        "prd": true,
+        "design": true,
+        "decomposition": false,
+        "upstream_reqs": true,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "design-only",
+      "plugin_count": 0
+    },
+    {
+      "id": "chat-engine",
+      "tier": "service",
+      "parent": null,
+      "path": "gears/chat-engine",
+      "runtime_name": "chat-engine",
+      "capabilities": [
+        "db",
+        "rest",
+        "stateful"
+      ],
+      "gear_deps": [
+        "authz-resolver"
+      ],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-canonical-errors",
+        "cf-gears-toolkit-db",
+        "cf-gears-toolkit-db-macros",
+        "cf-gears-toolkit-gts",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-odata",
+        "cf-gears-toolkit-odata-macros",
+        "cf-gears-toolkit-security",
+        "cf-gears-toolkit-utils"
+      ],
+      "packages": [
+        "cf-chat-engine",
+        "cf-chat-engine-sdk"
+      ],
+      "has_sdk_crate": true,
+      "has_impl_crate": true,
+      "crate_count": 2,
+      "docs": {
+        "prd": true,
+        "design": true,
+        "decomposition": true,
+        "upstream_reqs": false,
+        "adr_count": 28,
+        "feature_count": 11,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 0
+    },
+    {
+      "id": "credstore",
+      "tier": "service",
+      "parent": null,
+      "path": "gears/credstore",
+      "runtime_name": "credstore",
+      "capabilities": [
+        "system",
+        "db",
+        "rest",
+        "stateful"
+      ],
+      "gear_deps": [
+        "authz-resolver",
+        "tenant-resolver",
+        "types-registry"
+      ],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-canonical-errors",
+        "cf-gears-toolkit-db",
+        "cf-gears-toolkit-gts",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-security"
+      ],
+      "packages": [
+        "cf-gears-credstore",
+        "cf-gears-credstore-sdk"
+      ],
+      "has_sdk_crate": true,
+      "has_impl_crate": true,
+      "crate_count": 2,
+      "docs": {
+        "prd": true,
+        "design": true,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 3,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": true,
+        "quickstart": true
+      },
+      "gts": {
+        "gts_modules": 1,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 1
+    },
+    {
+      "id": "static-credstore-plugin",
+      "tier": "plugin",
+      "parent": "credstore",
+      "path": "gears/credstore/plugins/static-credstore-plugin",
+      "runtime_name": "static-credstore-plugin",
+      "capabilities": [],
+      "gear_deps": [
+        "types-registry"
+      ],
+      "sdk_dep_packages": [
+        "cf-gears-credstore-sdk",
+        "cf-gears-types-registry-sdk"
+      ],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-security"
+      ],
+      "packages": [
+        "cf-gears-static-credstore-plugin"
+      ],
+      "has_sdk_crate": false,
+      "has_impl_crate": true,
+      "crate_count": 1,
+      "docs": {
+        "prd": false,
+        "design": false,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 0
+    },
+    {
+      "id": "file-parser",
+      "tier": "service",
+      "parent": null,
+      "path": "gears/file-parser",
+      "runtime_name": "file-parser",
+      "capabilities": [
+        "rest"
+      ],
+      "gear_deps": [],
+      "sdk_dep_packages": [
+        "cf-gears-file-parser-sdk"
+      ],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-canonical-errors",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-security"
+      ],
+      "packages": [
+        "cf-gears-file-parser",
+        "cf-gears-file-parser-sdk"
+      ],
+      "has_sdk_crate": true,
+      "has_impl_crate": true,
+      "crate_count": 2,
+      "docs": {
+        "prd": true,
+        "design": true,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 1,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": true
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 0
+    },
+    {
+      "id": "file-storage",
+      "tier": "service",
+      "parent": null,
+      "path": "gears/file-storage",
+      "runtime_name": "file-storage",
+      "capabilities": [
+        "db",
+        "rest",
+        "stateful"
+      ],
+      "gear_deps": [
+        "authz-resolver"
+      ],
+      "sdk_dep_packages": [
+        "cf-gears-authz-resolver-sdk",
+        "cf-gears-file-storage-sdk"
+      ],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-canonical-errors",
+        "cf-gears-toolkit-db",
+        "cf-gears-toolkit-db-macros",
+        "cf-gears-toolkit-gts",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-security",
+        "cf-gears-toolkit-utils"
+      ],
+      "packages": [
+        "cf-gears-file-storage",
+        "cf-gears-file-storage-sdk"
+      ],
+      "has_sdk_crate": true,
+      "has_impl_crate": true,
+      "crate_count": 2,
+      "docs": {
+        "prd": true,
+        "design": true,
+        "decomposition": true,
+        "upstream_reqs": false,
+        "adr_count": 5,
+        "feature_count": 7,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 1,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 0
+    },
+    {
+      "id": "graph-analytics",
+      "tier": "service",
+      "parent": null,
+      "path": "gears/graph-analytics",
+      "runtime_name": null,
+      "capabilities": [],
+      "gear_deps": [],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [],
+      "packages": [],
+      "has_sdk_crate": false,
+      "has_impl_crate": false,
+      "crate_count": 0,
+      "docs": {
+        "prd": true,
+        "design": true,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 2,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "design-only",
+      "plugin_count": 0
+    },
+    {
+      "id": "graph-storage",
+      "tier": "service",
+      "parent": null,
+      "path": "gears/graph-storage",
+      "runtime_name": "graph-storage",
+      "capabilities": [
+        "db",
+        "rest"
+      ],
+      "gear_deps": [
+        "authz-resolver"
+      ],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-canonical-errors",
+        "cf-gears-toolkit-db",
+        "cf-gears-toolkit-db-macros",
+        "cf-gears-toolkit-gts",
+        "cf-gears-toolkit-http",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-odata",
+        "cf-gears-toolkit-odata-macros",
+        "cf-gears-toolkit-security"
+      ],
+      "packages": [
+        "cf-gears-graph-storage",
+        "cf-gears-graph-storage-sdk",
+        "cf-gears-graph-storage-onnx-embedding-plugin"
+      ],
+      "has_sdk_crate": true,
+      "has_impl_crate": true,
+      "crate_count": 3,
+      "docs": {
+        "prd": true,
+        "design": true,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 7,
+        "feature_count": 0,
+        "gts_schema_count": 12,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 1,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 0
+    },
+    {
+      "id": "infrastructure-resource-manager",
+      "tier": "service",
+      "parent": null,
+      "path": "gears/infrastructure-resource-manager",
+      "runtime_name": null,
+      "capabilities": [],
+      "gear_deps": [],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [],
+      "packages": [],
+      "has_sdk_crate": false,
+      "has_impl_crate": false,
+      "crate_count": 0,
+      "docs": {
+        "prd": true,
+        "design": true,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "design-only",
+      "plugin_count": 0
+    },
+    {
+      "id": "llm-gateway",
+      "tier": "service",
+      "parent": null,
+      "path": "gears/llm-gateway",
+      "runtime_name": null,
+      "capabilities": [],
+      "gear_deps": [],
+      "sdk_dep_packages": [
+        "cf-gears-model-registry-sdk"
+      ],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-gts",
+        "cf-gears-toolkit-security"
+      ],
+      "packages": [
+        "cf-gears-llm-gateway-sdk"
+      ],
+      "has_sdk_crate": true,
+      "has_impl_crate": false,
+      "crate_count": 1,
+      "docs": {
+        "prd": true,
+        "design": true,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 7,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 1,
+        "gts_error_catalog": false
+      },
+      "status": "sdk-only",
+      "plugin_count": 0
+    },
+    {
+      "id": "mini-chat",
+      "tier": "service",
+      "parent": null,
+      "path": "gears/mini-chat",
+      "runtime_name": "mini-chat",
+      "capabilities": [
+        "db",
+        "rest",
+        "stateful"
+      ],
+      "gear_deps": [
+        "types-registry",
+        "authn-resolver",
+        "authz-resolver",
+        "oagw"
+      ],
+      "sdk_dep_packages": [
+        "cf-gears-authn-resolver-sdk"
+      ],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-canonical-errors",
+        "cf-gears-toolkit-db",
+        "cf-gears-toolkit-db-macros",
+        "cf-gears-toolkit-gts",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-odata",
+        "cf-gears-toolkit-security"
+      ],
+      "packages": [
+        "cf-gears-mini-chat",
+        "cf-gears-mini-chat-sdk"
+      ],
+      "has_sdk_crate": true,
+      "has_impl_crate": true,
+      "crate_count": 2,
+      "docs": {
+        "prd": true,
+        "design": true,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 3,
+        "feature_count": 2,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 3,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 1
+    },
+    {
+      "id": "static-model-policy-plugin",
+      "tier": "plugin",
+      "parent": "mini-chat",
+      "path": "gears/mini-chat/plugins/static-model-policy-plugin",
+      "runtime_name": null,
+      "capabilities": [],
+      "gear_deps": [],
+      "sdk_dep_packages": [
+        "cf-gears-mini-chat-sdk",
+        "cf-gears-types-registry-sdk"
+      ],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-macros"
+      ],
+      "packages": [
+        "cf-gears-static-mini-chat-model-policy-plugin"
+      ],
+      "has_sdk_crate": false,
+      "has_impl_crate": false,
+      "crate_count": 1,
+      "docs": {
+        "prd": false,
+        "design": false,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "support",
+      "plugin_count": 0
+    },
+    {
+      "id": "model-registry",
+      "tier": "service",
+      "parent": null,
+      "path": "gears/model-registry",
+      "runtime_name": null,
+      "capabilities": [],
+      "gear_deps": [],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [
+        "cf-gears-toolkit-gts",
+        "cf-gears-toolkit-odata",
+        "cf-gears-toolkit-security"
+      ],
+      "packages": [
+        "cf-gears-model-registry-sdk"
+      ],
+      "has_sdk_crate": true,
+      "has_impl_crate": false,
+      "crate_count": 1,
+      "docs": {
+        "prd": true,
+        "design": true,
+        "decomposition": false,
+        "upstream_reqs": true,
+        "adr_count": 5,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "sdk-only",
+      "plugin_count": 0
+    },
+    {
+      "id": "serverless-runtime",
+      "tier": "service",
+      "parent": null,
+      "path": "gears/serverless-runtime",
+      "runtime_name": null,
+      "capabilities": [],
+      "gear_deps": [],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [],
+      "packages": [],
+      "has_sdk_crate": false,
+      "has_impl_crate": false,
+      "crate_count": 0,
+      "docs": {
+        "prd": true,
+        "design": true,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 5,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "design-only",
+      "plugin_count": 0
+    },
+    {
+      "id": "settings-service",
+      "tier": "service",
+      "parent": null,
+      "path": "gears/settings-service",
+      "runtime_name": null,
+      "capabilities": [],
+      "gear_deps": [],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [],
+      "packages": [],
+      "has_sdk_crate": false,
+      "has_impl_crate": false,
+      "crate_count": 0,
+      "docs": {
+        "prd": true,
+        "design": false,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "design-only",
+      "plugin_count": 0
+    },
+    {
+      "id": "simple-resource-registry",
+      "tier": "service",
+      "parent": null,
+      "path": "gears/simple-resource-registry",
+      "runtime_name": null,
+      "capabilities": [],
+      "gear_deps": [],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [],
+      "packages": [],
+      "has_sdk_crate": false,
+      "has_impl_crate": false,
+      "crate_count": 0,
+      "docs": {
+        "prd": true,
+        "design": true,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 3,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "design-only",
+      "plugin_count": 0
+    },
+    {
+      "id": "simple-user-settings",
+      "tier": "service",
+      "parent": null,
+      "path": "gears/simple-user-settings",
+      "runtime_name": "simple-user-settings",
+      "capabilities": [
+        "rest",
+        "db"
+      ],
+      "gear_deps": [
+        "authz-resolver"
+      ],
+      "sdk_dep_packages": [
+        "cf-gears-authz-resolver-sdk",
+        "cf-gears-simple-user-settings-sdk"
+      ],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-canonical-errors",
+        "cf-gears-toolkit-db",
+        "cf-gears-toolkit-db-macros",
+        "cf-gears-toolkit-gts",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-security"
+      ],
+      "packages": [
+        "cf-gears-simple-user-settings",
+        "cf-gears-simple-user-settings-sdk"
+      ],
+      "has_sdk_crate": true,
+      "has_impl_crate": true,
+      "crate_count": 2,
+      "docs": {
+        "prd": true,
+        "design": true,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": true
+      },
+      "status": "implemented",
+      "plugin_count": 0
+    },
+    {
+      "id": "account-management",
+      "tier": "system",
+      "parent": null,
+      "path": "gears/system/account-management",
+      "runtime_name": "account-management",
+      "capabilities": [
+        "db",
+        "rest",
+        "stateful"
+      ],
+      "gear_deps": [
+        "authz-resolver",
+        "types-registry",
+        "resource-group",
+        "tenant-resolver"
+      ],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-canonical-errors",
+        "cf-gears-toolkit-db",
+        "cf-gears-toolkit-db-macros",
+        "cf-gears-toolkit-gts",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-odata",
+        "cf-gears-toolkit-odata-macros",
+        "cf-gears-toolkit-security",
+        "cf-gears-toolkit-utils"
+      ],
+      "packages": [
+        "cf-gears-account-management",
+        "cf-gears-account-management-sdk"
+      ],
+      "has_sdk_crate": true,
+      "has_impl_crate": true,
+      "crate_count": 2,
+      "docs": {
+        "prd": true,
+        "design": true,
+        "decomposition": true,
+        "upstream_reqs": false,
+        "adr_count": 8,
+        "feature_count": 9,
+        "gts_schema_count": 5,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 3,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 2
+    },
+    {
+      "id": "keycloak-idp-plugin",
+      "tier": "plugin",
+      "parent": "account-management",
+      "path": "gears/system/account-management/plugins/keycloak-idp-plugin",
+      "runtime_name": "keycloak-idp-plugin",
+      "capabilities": [],
+      "gear_deps": [
+        "types-registry",
+        "credstore"
+      ],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-gts",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-odata",
+        "cf-gears-toolkit-security"
+      ],
+      "packages": [
+        "cf-gears-keycloak-idp-plugin"
+      ],
+      "has_sdk_crate": false,
+      "has_impl_crate": true,
+      "crate_count": 1,
+      "docs": {
+        "prd": true,
+        "design": true,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 0
+    },
+    {
+      "id": "static-idp-plugin",
+      "tier": "plugin",
+      "parent": "account-management",
+      "path": "gears/system/account-management/plugins/static-idp-plugin",
+      "runtime_name": "static-idp-plugin",
+      "capabilities": [],
+      "gear_deps": [
+        "types-registry"
+      ],
+      "sdk_dep_packages": [
+        "cf-gears-account-management-sdk",
+        "cf-gears-types-registry-sdk"
+      ],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-canonical-errors",
+        "cf-gears-toolkit-gts",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-odata",
+        "cf-gears-toolkit-security"
+      ],
+      "packages": [
+        "cf-gears-static-idp-plugin"
+      ],
+      "has_sdk_crate": false,
+      "has_impl_crate": true,
+      "crate_count": 1,
+      "docs": {
+        "prd": false,
+        "design": false,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 0
+    },
+    {
+      "id": "api-gateway",
+      "tier": "system",
+      "parent": null,
+      "path": "gears/system/api-gateway",
+      "runtime_name": "api-gateway",
+      "capabilities": [
+        "rest_host",
+        "rest",
+        "stateful"
+      ],
+      "gear_deps": [
+        "grpc-hub",
+        "authn-resolver"
+      ],
+      "sdk_dep_packages": [
+        "cf-gears-authn-resolver-sdk"
+      ],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-canonical-errors",
+        "cf-gears-toolkit-gateway",
+        "cf-gears-toolkit-gts",
+        "cf-gears-toolkit-http",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-security",
+        "cf-gears-toolkit-transport-grpc"
+      ],
+      "packages": [
+        "cf-gears-api-gateway"
+      ],
+      "has_sdk_crate": false,
+      "has_impl_crate": true,
+      "crate_count": 1,
+      "docs": {
+        "prd": false,
+        "design": false,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 0
+    },
+    {
+      "id": "authn-resolver",
+      "tier": "system",
+      "parent": null,
+      "path": "gears/system/authn-resolver",
+      "runtime_name": "authn-resolver",
+      "capabilities": [
+        "system"
+      ],
+      "gear_deps": [
+        "types-registry"
+      ],
+      "sdk_dep_packages": [
+        "cf-gears-authn-resolver-sdk",
+        "cf-gears-types-registry-sdk"
+      ],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-canonical-errors",
+        "cf-gears-toolkit-gts",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-security"
+      ],
+      "packages": [
+        "cf-gears-authn-resolver",
+        "cf-gears-authn-resolver-sdk"
+      ],
+      "has_sdk_crate": true,
+      "has_impl_crate": true,
+      "crate_count": 2,
+      "docs": {
+        "prd": false,
+        "design": false,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 1,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 2
+    },
+    {
+      "id": "oidc-authn-plugin",
+      "tier": "plugin",
+      "parent": "authn-resolver",
+      "path": "gears/system/authn-resolver/plugins/oidc-authn-plugin",
+      "runtime_name": "oidc-authn-plugin",
+      "capabilities": [],
+      "gear_deps": [
+        "types-registry",
+        "authn-resolver"
+      ],
+      "sdk_dep_packages": [
+        "cf-gears-authn-resolver-sdk",
+        "cf-gears-types-registry-sdk"
+      ],
+      "toolkit_libs": [
+        "cf-gears-toolkit-gts"
+      ],
+      "packages": [
+        "cf-gears-oidc-authn-plugin"
+      ],
+      "has_sdk_crate": false,
+      "has_impl_crate": true,
+      "crate_count": 1,
+      "docs": {
+        "prd": true,
+        "design": true,
+        "decomposition": true,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 6,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 0
+    },
+    {
+      "id": "static-authn-plugin",
+      "tier": "plugin",
+      "parent": "authn-resolver",
+      "path": "gears/system/authn-resolver/plugins/static-authn-plugin",
+      "runtime_name": "static-authn-plugin",
+      "capabilities": [],
+      "gear_deps": [
+        "types-registry"
+      ],
+      "sdk_dep_packages": [
+        "cf-gears-authn-resolver-sdk",
+        "cf-gears-types-registry-sdk"
+      ],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-security"
+      ],
+      "packages": [
+        "cf-gears-static-authn-plugin"
+      ],
+      "has_sdk_crate": false,
+      "has_impl_crate": true,
+      "crate_count": 1,
+      "docs": {
+        "prd": false,
+        "design": false,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 0
+    },
+    {
+      "id": "authz-resolver",
+      "tier": "system",
+      "parent": null,
+      "path": "gears/system/authz-resolver",
+      "runtime_name": "authz-resolver",
+      "capabilities": [
+        "system"
+      ],
+      "gear_deps": [
+        "types-registry"
+      ],
+      "sdk_dep_packages": [
+        "cf-gears-authz-resolver-sdk",
+        "cf-gears-types-registry-sdk"
+      ],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-canonical-errors",
+        "cf-gears-toolkit-gts",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-security"
+      ],
+      "packages": [
+        "cf-gears-authz-resolver",
+        "cf-gears-authz-resolver-sdk"
+      ],
+      "has_sdk_crate": true,
+      "has_impl_crate": true,
+      "crate_count": 2,
+      "docs": {
+        "prd": false,
+        "design": false,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 1,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 2
+    },
+    {
+      "id": "static-authz-plugin",
+      "tier": "plugin",
+      "parent": "authz-resolver",
+      "path": "gears/system/authz-resolver/plugins/static-authz-plugin",
+      "runtime_name": "static-authz-plugin",
+      "capabilities": [],
+      "gear_deps": [
+        "types-registry"
+      ],
+      "sdk_dep_packages": [
+        "cf-gears-authz-resolver-sdk",
+        "cf-gears-types-registry-sdk"
+      ],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-gts",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-security"
+      ],
+      "packages": [
+        "cf-gears-static-authz-plugin"
+      ],
+      "has_sdk_crate": false,
+      "has_impl_crate": true,
+      "crate_count": 1,
+      "docs": {
+        "prd": false,
+        "design": false,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 0
+    },
+    {
+      "id": "tr-authz-plugin",
+      "tier": "plugin",
+      "parent": "authz-resolver",
+      "path": "gears/system/authz-resolver/plugins/tr-authz-plugin",
+      "runtime_name": "tr-authz-plugin",
+      "capabilities": [],
+      "gear_deps": [
+        "types-registry",
+        "tenant-resolver"
+      ],
+      "sdk_dep_packages": [
+        "cf-gears-authz-resolver-sdk",
+        "cf-gears-tenant-resolver-sdk",
+        "cf-gears-types-registry-sdk"
+      ],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-gts",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-security"
+      ],
+      "packages": [
+        "cf-gears-tr-authz-plugin"
+      ],
+      "has_sdk_crate": false,
+      "has_impl_crate": true,
+      "crate_count": 1,
+      "docs": {
+        "prd": false,
+        "design": false,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 0
+    },
+    {
+      "id": "cluster",
+      "tier": "system",
+      "parent": null,
+      "path": "gears/system/cluster",
+      "runtime_name": "cluster",
+      "capabilities": [
+        "stateful"
+      ],
+      "gear_deps": [],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-gts"
+      ],
+      "packages": [
+        "cf-gears-cluster",
+        "cf-gears-cluster-conformance",
+        "cf-gears-cluster-sdk"
+      ],
+      "has_sdk_crate": true,
+      "has_impl_crate": true,
+      "crate_count": 3,
+      "docs": {
+        "prd": true,
+        "design": true,
+        "decomposition": true,
+        "upstream_reqs": false,
+        "adr_count": 9,
+        "feature_count": 11,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 1,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 2
+    },
+    {
+      "id": "postgres-cluster-plugin",
+      "tier": "plugin",
+      "parent": "cluster",
+      "path": "gears/system/cluster/plugins/postgres-cluster-plugin",
+      "runtime_name": null,
+      "capabilities": [],
+      "gear_deps": [],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-macros"
+      ],
+      "packages": [
+        "cf-postgres-cluster-plugin"
+      ],
+      "has_sdk_crate": false,
+      "has_impl_crate": false,
+      "crate_count": 1,
+      "docs": {
+        "prd": false,
+        "design": true,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "design-only",
+      "plugin_count": 0
+    },
+    {
+      "id": "standalone-cluster-plugin",
+      "tier": "plugin",
+      "parent": "cluster",
+      "path": "gears/system/cluster/plugins/standalone-cluster-plugin",
+      "runtime_name": null,
+      "capabilities": [],
+      "gear_deps": [],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [],
+      "packages": [
+        "cf-gears-standalone-cluster-plugin"
+      ],
+      "has_sdk_crate": false,
+      "has_impl_crate": false,
+      "crate_count": 1,
+      "docs": {
+        "prd": false,
+        "design": false,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "support",
+      "plugin_count": 0
+    },
+    {
+      "id": "event-broker",
+      "tier": "system",
+      "parent": null,
+      "path": "gears/system/event-broker",
+      "runtime_name": "event-broker",
+      "capabilities": [
+        "rest",
+        "stateful"
+      ],
+      "gear_deps": [
+        "cluster"
+      ],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-canonical-errors",
+        "cf-gears-toolkit-db",
+        "cf-gears-toolkit-gts",
+        "cf-gears-toolkit-security",
+        "cf-gears-toolkit-stable-hash"
+      ],
+      "packages": [
+        "cf-gears-event-broker",
+        "cf-gears-event-broker-sdk"
+      ],
+      "has_sdk_crate": true,
+      "has_impl_crate": true,
+      "crate_count": 2,
+      "docs": {
+        "prd": true,
+        "design": true,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 7,
+        "feature_count": 4,
+        "gts_schema_count": 5,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 0
+    },
+    {
+      "id": "gear-orchestrator",
+      "tier": "system",
+      "parent": null,
+      "path": "gears/system/gear-orchestrator",
+      "runtime_name": "gear-orchestrator",
+      "capabilities": [
+        "grpc",
+        "system",
+        "rest"
+      ],
+      "gear_deps": [],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-k8s-auth",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-security",
+        "cf-gears-toolkit-transport-grpc"
+      ],
+      "packages": [
+        "cf-gears-gear-orchestrator"
+      ],
+      "has_sdk_crate": false,
+      "has_impl_crate": true,
+      "crate_count": 1,
+      "docs": {
+        "prd": false,
+        "design": false,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 0
+    },
+    {
+      "id": "grpc-hub",
+      "tier": "system",
+      "parent": null,
+      "path": "gears/system/grpc-hub",
+      "runtime_name": "grpc-hub",
+      "capabilities": [
+        "stateful",
+        "system",
+        "grpc_hub"
+      ],
+      "gear_deps": [],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-transport-grpc"
+      ],
+      "packages": [
+        "cf-gears-grpc-hub"
+      ],
+      "has_sdk_crate": false,
+      "has_impl_crate": true,
+      "crate_count": 1,
+      "docs": {
+        "prd": false,
+        "design": false,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 0
+    },
+    {
+      "id": "license-resolver",
+      "tier": "system",
+      "parent": null,
+      "path": "gears/system/license-resolver",
+      "runtime_name": null,
+      "capabilities": [],
+      "gear_deps": [],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [],
+      "packages": [],
+      "has_sdk_crate": false,
+      "has_impl_crate": false,
+      "crate_count": 0,
+      "docs": {
+        "prd": true,
+        "design": true,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 3,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "design-only",
+      "plugin_count": 0
+    },
+    {
+      "id": "nodes-registry",
+      "tier": "system",
+      "parent": null,
+      "path": "gears/system/nodes-registry",
+      "runtime_name": "nodes-registry",
+      "capabilities": [
+        "rest"
+      ],
+      "gear_deps": [],
+      "sdk_dep_packages": [
+        "cf-gears-nodes-registry-sdk"
+      ],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-canonical-errors",
+        "cf-gears-toolkit-gts",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-node-info"
+      ],
+      "packages": [
+        "cf-gears-nodes-registry",
+        "cf-gears-nodes-registry-sdk"
+      ],
+      "has_sdk_crate": true,
+      "has_impl_crate": true,
+      "crate_count": 2,
+      "docs": {
+        "prd": false,
+        "design": false,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": true
+      },
+      "gts": {
+        "gts_modules": 1,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 0
+    },
+    {
+      "id": "oagw",
+      "tier": "system",
+      "parent": null,
+      "path": "gears/system/oagw",
+      "runtime_name": "oagw",
+      "capabilities": [
+        "system",
+        "rest"
+      ],
+      "gear_deps": [
+        "types-registry",
+        "authz-resolver",
+        "credstore",
+        "tenant-resolver"
+      ],
+      "sdk_dep_packages": [
+        "cf-gears-oagw-sdk"
+      ],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-auth",
+        "cf-gears-toolkit-canonical-errors",
+        "cf-gears-toolkit-gts",
+        "cf-gears-toolkit-http",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-security"
+      ],
+      "packages": [
+        "cf-gears-oagw",
+        "cf-gears-oagw-sdk"
+      ],
+      "has_sdk_crate": true,
+      "has_impl_crate": true,
+      "crate_count": 2,
+      "docs": {
+        "prd": true,
+        "design": true,
+        "decomposition": true,
+        "upstream_reqs": false,
+        "adr_count": 17,
+        "feature_count": 8,
+        "gts_schema_count": 6,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 1,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 0
+    },
+    {
+      "id": "quota-enforcement",
+      "tier": "system",
+      "parent": null,
+      "path": "gears/system/quota-enforcement",
+      "runtime_name": null,
+      "capabilities": [],
+      "gear_deps": [],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [],
+      "packages": [],
+      "has_sdk_crate": false,
+      "has_impl_crate": false,
+      "crate_count": 0,
+      "docs": {
+        "prd": true,
+        "design": true,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 6,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "design-only",
+      "plugin_count": 0
+    },
+    {
+      "id": "resource-group",
+      "tier": "system",
+      "parent": null,
+      "path": "gears/system/resource-group",
+      "runtime_name": "resource-group",
+      "capabilities": [
+        "db",
+        "rest"
+      ],
+      "gear_deps": [
+        "authz-resolver",
+        "types-registry"
+      ],
+      "sdk_dep_packages": [
+        "cf-gears-resource-group-sdk"
+      ],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-canonical-errors",
+        "cf-gears-toolkit-db",
+        "cf-gears-toolkit-db-macros",
+        "cf-gears-toolkit-gts",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-odata",
+        "cf-gears-toolkit-odata-macros",
+        "cf-gears-toolkit-security"
+      ],
+      "packages": [
+        "cf-gears-resource-group",
+        "cf-gears-resource-group-sdk"
+      ],
+      "has_sdk_crate": true,
+      "has_impl_crate": true,
+      "crate_count": 2,
+      "docs": {
+        "prd": true,
+        "design": true,
+        "decomposition": true,
+        "upstream_reqs": false,
+        "adr_count": 1,
+        "feature_count": 5,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 1,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 0
+    },
+    {
+      "id": "tenant-resolver",
+      "tier": "system",
+      "parent": null,
+      "path": "gears/system/tenant-resolver",
+      "runtime_name": "tenant-resolver",
+      "capabilities": [
+        "system"
+      ],
+      "gear_deps": [
+        "types-registry"
+      ],
+      "sdk_dep_packages": [
+        "cf-gears-tenant-resolver-sdk",
+        "cf-gears-types-registry-sdk"
+      ],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-canonical-errors",
+        "cf-gears-toolkit-gts",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-security"
+      ],
+      "packages": [
+        "cf-gears-tenant-resolver",
+        "cf-gears-tenant-resolver-sdk"
+      ],
+      "has_sdk_crate": true,
+      "has_impl_crate": true,
+      "crate_count": 2,
+      "docs": {
+        "prd": false,
+        "design": false,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": true
+      },
+      "gts": {
+        "gts_modules": 1,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 3
+    },
+    {
+      "id": "rg-tr-plugin",
+      "tier": "plugin",
+      "parent": "tenant-resolver",
+      "path": "gears/system/tenant-resolver/plugins/rg-tr-plugin",
+      "runtime_name": "rg-tr-plugin",
+      "capabilities": [],
+      "gear_deps": [
+        "types-registry",
+        "resource-group"
+      ],
+      "sdk_dep_packages": [
+        "cf-gears-resource-group-sdk",
+        "cf-gears-tenant-resolver-sdk",
+        "cf-gears-types-registry-sdk"
+      ],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-canonical-errors",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-odata",
+        "cf-gears-toolkit-security"
+      ],
+      "packages": [
+        "cf-gears-rg-tr-plugin"
+      ],
+      "has_sdk_crate": false,
+      "has_impl_crate": true,
+      "crate_count": 1,
+      "docs": {
+        "prd": false,
+        "design": false,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 0
+    },
+    {
+      "id": "single-tenant-tr-plugin",
+      "tier": "plugin",
+      "parent": "tenant-resolver",
+      "path": "gears/system/tenant-resolver/plugins/single-tenant-tr-plugin",
+      "runtime_name": "single-tenant-tr-plugin",
+      "capabilities": [],
+      "gear_deps": [
+        "types-registry"
+      ],
+      "sdk_dep_packages": [
+        "cf-gears-tenant-resolver-sdk",
+        "cf-gears-types-registry-sdk"
+      ],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-security"
+      ],
+      "packages": [
+        "cf-gears-single-tenant-tr-plugin"
+      ],
+      "has_sdk_crate": false,
+      "has_impl_crate": true,
+      "crate_count": 1,
+      "docs": {
+        "prd": false,
+        "design": false,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 0
+    },
+    {
+      "id": "static-tr-plugin",
+      "tier": "plugin",
+      "parent": "tenant-resolver",
+      "path": "gears/system/tenant-resolver/plugins/static-tr-plugin",
+      "runtime_name": "static-tr-plugin",
+      "capabilities": [],
+      "gear_deps": [
+        "types-registry"
+      ],
+      "sdk_dep_packages": [
+        "cf-gears-tenant-resolver-sdk",
+        "cf-gears-types-registry-sdk"
+      ],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-security"
+      ],
+      "packages": [
+        "cf-gears-static-tr-plugin"
+      ],
+      "has_sdk_crate": false,
+      "has_impl_crate": true,
+      "crate_count": 1,
+      "docs": {
+        "prd": false,
+        "design": false,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 0
+    },
+    {
+      "id": "types-registry",
+      "tier": "system",
+      "parent": null,
+      "path": "gears/system/types-registry",
+      "runtime_name": "types-registry",
+      "capabilities": [
+        "system",
+        "rest"
+      ],
+      "gear_deps": [],
+      "sdk_dep_packages": [
+        "cf-gears-types-registry-sdk"
+      ],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-canonical-errors",
+        "cf-gears-toolkit-gts",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-utils"
+      ],
+      "packages": [
+        "cf-gears-types-registry",
+        "cf-gears-types-registry-sdk"
+      ],
+      "has_sdk_crate": true,
+      "has_impl_crate": true,
+      "crate_count": 2,
+      "docs": {
+        "prd": true,
+        "design": true,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 15,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 1,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 0
+    },
+    {
+      "id": "usage-collector",
+      "tier": "system",
+      "parent": null,
+      "path": "gears/system/usage-collector",
+      "runtime_name": "usage-collector",
+      "capabilities": [
+        "rest",
+        "stateful"
+      ],
+      "gear_deps": [
+        "types-registry",
+        "authz-resolver"
+      ],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-canonical-errors",
+        "cf-gears-toolkit-gts",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-odata",
+        "cf-gears-toolkit-odata-macros",
+        "cf-gears-toolkit-security"
+      ],
+      "packages": [
+        "cf-gears-usage-collector",
+        "cf-gears-usage-collector-sdk"
+      ],
+      "has_sdk_crate": true,
+      "has_impl_crate": true,
+      "crate_count": 2,
+      "docs": {
+        "prd": true,
+        "design": true,
+        "decomposition": true,
+        "upstream_reqs": false,
+        "adr_count": 11,
+        "feature_count": 5,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 3,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 2
+    },
+    {
+      "id": "noop-usage-collector-plugin",
+      "tier": "plugin",
+      "parent": "usage-collector",
+      "path": "gears/system/usage-collector/plugins/noop-usage-collector-plugin",
+      "runtime_name": "noop-usage-collector-plugin",
+      "capabilities": [],
+      "gear_deps": [
+        "types-registry"
+      ],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-odata"
+      ],
+      "packages": [
+        "cf-gears-noop-usage-collector-plugin"
+      ],
+      "has_sdk_crate": false,
+      "has_impl_crate": true,
+      "crate_count": 1,
+      "docs": {
+        "prd": false,
+        "design": false,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 0
+    },
+    {
+      "id": "timescaledb-usage-collector-plugin",
+      "tier": "plugin",
+      "parent": "usage-collector",
+      "path": "gears/system/usage-collector/plugins/timescaledb-usage-collector-plugin",
+      "runtime_name": "timescaledb-usage-collector-plugin",
+      "capabilities": [],
+      "gear_deps": [
+        "types-registry"
+      ],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-odata"
+      ],
+      "packages": [
+        "cf-gears-timescaledb-usage-collector-plugin"
+      ],
+      "has_sdk_crate": false,
+      "has_impl_crate": true,
+      "crate_count": 1,
+      "docs": {
+        "prd": true,
+        "design": true,
+        "decomposition": true,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 6,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 0
+    },
+    {
+      "id": "contracts",
+      "tier": "bss",
+      "parent": null,
+      "path": "gears/bss/contracts",
+      "runtime_name": null,
+      "capabilities": [],
+      "gear_deps": [],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [],
+      "packages": [],
+      "has_sdk_crate": false,
+      "has_impl_crate": false,
+      "crate_count": 0,
+      "docs": {
+        "prd": true,
+        "design": false,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "design-only",
+      "plugin_count": 0
+    },
+    {
+      "id": "fixtures",
+      "tier": "bss",
+      "parent": null,
+      "path": "gears/bss/fixtures",
+      "runtime_name": null,
+      "capabilities": [],
+      "gear_deps": [],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [],
+      "packages": [
+        "cf-gears-bss-fixtures",
+        "cf-gears-bss-fixtures-conformance"
+      ],
+      "has_sdk_crate": false,
+      "has_impl_crate": false,
+      "crate_count": 2,
+      "docs": {
+        "prd": false,
+        "design": false,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "support",
+      "plugin_count": 0
+    },
+    {
+      "id": "ledger",
+      "tier": "bss",
+      "parent": null,
+      "path": "gears/bss/ledger",
+      "runtime_name": "bss-ledger",
+      "capabilities": [
+        "db",
+        "rest",
+        "stateful"
+      ],
+      "gear_deps": [
+        "types-registry",
+        "authz-resolver",
+        "account-management"
+      ],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-canonical-errors",
+        "cf-gears-toolkit-db",
+        "cf-gears-toolkit-db-macros",
+        "cf-gears-toolkit-gts",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-odata",
+        "cf-gears-toolkit-security"
+      ],
+      "packages": [
+        "cf-gears-bss-ledger",
+        "cf-gears-bss-ledger-sdk"
+      ],
+      "has_sdk_crate": true,
+      "has_impl_crate": true,
+      "crate_count": 2,
+      "docs": {
+        "prd": true,
+        "design": true,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 1,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 3,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 0
+    },
+    {
+      "id": "pricing",
+      "tier": "bss",
+      "parent": null,
+      "path": "gears/bss/pricing",
+      "runtime_name": "bss-pricing",
+      "capabilities": [
+        "db",
+        "rest",
+        "stateful"
+      ],
+      "gear_deps": [
+        "types-registry",
+        "authz-resolver"
+      ],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-canonical-errors",
+        "cf-gears-toolkit-db",
+        "cf-gears-toolkit-db-macros",
+        "cf-gears-toolkit-gts",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-odata",
+        "cf-gears-toolkit-security"
+      ],
+      "packages": [
+        "cf-gears-bss-pricing",
+        "cf-gears-bss-pricing-sdk"
+      ],
+      "has_sdk_crate": true,
+      "has_impl_crate": true,
+      "crate_count": 2,
+      "docs": {
+        "prd": true,
+        "design": true,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 3,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 3,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 0
+    },
+    {
+      "id": "products",
+      "tier": "bss",
+      "parent": null,
+      "path": "gears/bss/products",
+      "runtime_name": null,
+      "capabilities": [],
+      "gear_deps": [],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [],
+      "packages": [],
+      "has_sdk_crate": false,
+      "has_impl_crate": false,
+      "crate_count": 0,
+      "docs": {
+        "prd": true,
+        "design": false,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "design-only",
+      "plugin_count": 0
+    },
+    {
+      "id": "rate-provider",
+      "tier": "bss",
+      "parent": null,
+      "path": "gears/bss/rate-provider",
+      "runtime_name": "bss-rate-provider",
+      "capabilities": [],
+      "gear_deps": [
+        "types-registry"
+      ],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-gts",
+        "cf-gears-toolkit-http",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-security"
+      ],
+      "packages": [
+        "cf-gears-bss-rate-provider",
+        "cf-gears-bss-rate-provider-sdk"
+      ],
+      "has_sdk_crate": true,
+      "has_impl_crate": true,
+      "crate_count": 2,
+      "docs": {
+        "prd": true,
+        "design": true,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 1,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 2
+    },
+    {
+      "id": "ecb-plugin",
+      "tier": "plugin",
+      "parent": "rate-provider",
+      "path": "gears/bss/rate-provider/plugins/ecb-plugin",
+      "runtime_name": "bss-rate-provider-ecb-plugin",
+      "capabilities": [],
+      "gear_deps": [
+        "types-registry"
+      ],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-http",
+        "cf-gears-toolkit-security"
+      ],
+      "packages": [
+        "cf-gears-bss-rate-provider-ecb-plugin"
+      ],
+      "has_sdk_crate": false,
+      "has_impl_crate": true,
+      "crate_count": 1,
+      "docs": {
+        "prd": false,
+        "design": false,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 0
+    },
+    {
+      "id": "http-json-plugin",
+      "tier": "plugin",
+      "parent": "rate-provider",
+      "path": "gears/bss/rate-provider/plugins/http-json-plugin",
+      "runtime_name": "bss-rate-provider-http-json-plugin",
+      "capabilities": [],
+      "gear_deps": [
+        "types-registry"
+      ],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-http",
+        "cf-gears-toolkit-security"
+      ],
+      "packages": [
+        "cf-gears-bss-rate-provider-http-json-plugin"
+      ],
+      "has_sdk_crate": false,
+      "has_impl_crate": true,
+      "crate_count": 1,
+      "docs": {
+        "prd": false,
+        "design": false,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 0
+    },
+    {
+      "id": "rating",
+      "tier": "bss",
+      "parent": null,
+      "path": "gears/bss/rating",
+      "runtime_name": null,
+      "capabilities": [],
+      "gear_deps": [],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [],
+      "packages": [],
+      "has_sdk_crate": false,
+      "has_impl_crate": false,
+      "crate_count": 0,
+      "docs": {
+        "prd": true,
+        "design": true,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 2,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "design-only",
+      "plugin_count": 0
+    },
+    {
+      "id": "subscriptions",
+      "tier": "bss",
+      "parent": null,
+      "path": "gears/bss/subscriptions",
+      "runtime_name": null,
+      "capabilities": [],
+      "gear_deps": [],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [],
+      "packages": [],
+      "has_sdk_crate": false,
+      "has_impl_crate": false,
+      "crate_count": 0,
+      "docs": {
+        "prd": true,
+        "design": true,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 3,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "design-only",
+      "plugin_count": 0
+    },
+    {
+      "id": "api-contracts",
+      "tier": "example",
+      "parent": null,
+      "path": "examples/toolkit/api-contracts",
+      "runtime_name": "api-contracts",
+      "capabilities": [
+        "rest"
+      ],
+      "gear_deps": [],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-canonical-errors",
+        "cf-gears-toolkit-canonical-errors-macro",
+        "cf-gears-toolkit-contract",
+        "cf-gears-toolkit-contract-protogen",
+        "cf-gears-toolkit-http",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-security",
+        "cf-gears-toolkit-transport-grpc"
+      ],
+      "packages": [
+        "cf-api-contracts",
+        "cf-api-contracts-consumer",
+        "cf-api-contracts-sdk"
+      ],
+      "has_sdk_crate": true,
+      "has_impl_crate": true,
+      "crate_count": 3,
+      "docs": {
+        "prd": false,
+        "design": false,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 0
+    },
+    {
+      "id": "users-info",
+      "tier": "example",
+      "parent": null,
+      "path": "examples/toolkit/users-info",
+      "runtime_name": "users-info",
+      "capabilities": [
+        "db",
+        "rest"
+      ],
+      "gear_deps": [
+        "authz-resolver"
+      ],
+      "sdk_dep_packages": [
+        "cf-gears-authz-resolver-sdk"
+      ],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-canonical-errors",
+        "cf-gears-toolkit-db",
+        "cf-gears-toolkit-db-macros",
+        "cf-gears-toolkit-gts",
+        "cf-gears-toolkit-http",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-odata",
+        "cf-gears-toolkit-odata-macros",
+        "cf-gears-toolkit-sdk",
+        "cf-gears-toolkit-security"
+      ],
+      "packages": [
+        "users-info",
+        "users-info-sdk",
+        "users-info-server"
+      ],
+      "has_sdk_crate": true,
+      "has_impl_crate": true,
+      "crate_count": 3,
+      "docs": {
+        "prd": false,
+        "design": false,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 1,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 0
+    },
+    {
+      "id": "calculator",
+      "tier": "example",
+      "parent": null,
+      "path": "examples/oop-gears/calculator",
+      "runtime_name": "calculator",
+      "capabilities": [
+        "grpc"
+      ],
+      "gear_deps": [],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-security",
+        "cf-gears-toolkit-transport-grpc"
+      ],
+      "packages": [
+        "calculator",
+        "calculator-sdk"
+      ],
+      "has_sdk_crate": true,
+      "has_impl_crate": true,
+      "crate_count": 2,
+      "docs": {
+        "prd": false,
+        "design": false,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 0
+    },
+    {
+      "id": "calculator-gateway",
+      "tier": "example",
+      "parent": null,
+      "path": "examples/oop-gears/calculator-gateway",
+      "runtime_name": "calculator-gateway",
+      "capabilities": [
+        "rest"
+      ],
+      "gear_deps": [
+        "calculator"
+      ],
+      "sdk_dep_packages": [],
+      "toolkit_libs": [
+        "cf-gears-toolkit",
+        "cf-gears-toolkit-macros",
+        "cf-gears-toolkit-security"
+      ],
+      "packages": [
+        "calculator-gateway",
+        "calculator_gateway_sdk"
+      ],
+      "has_sdk_crate": true,
+      "has_impl_crate": true,
+      "crate_count": 2,
+      "docs": {
+        "prd": false,
+        "design": false,
+        "decomposition": false,
+        "upstream_reqs": false,
+        "adr_count": 0,
+        "feature_count": 0,
+        "gts_schema_count": 0,
+        "openapi": false,
+        "quickstart": false
+      },
+      "gts": {
+        "gts_modules": 0,
+        "gts_error_catalog": false
+      },
+      "status": "implemented",
+      "plugin_count": 0
+    }
+  ],
+  "edges": [
+    {
+      "from": "chat-engine",
+      "to": "authz-resolver",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "chat-engine",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "chat-engine",
+      "to": "cf-gears-toolkit-canonical-errors",
+      "type": "lib-dep"
+    },
+    {
+      "from": "chat-engine",
+      "to": "cf-gears-toolkit-db",
+      "type": "lib-dep"
+    },
+    {
+      "from": "chat-engine",
+      "to": "cf-gears-toolkit-db-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "chat-engine",
+      "to": "cf-gears-toolkit-gts",
+      "type": "lib-dep"
+    },
+    {
+      "from": "chat-engine",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "chat-engine",
+      "to": "cf-gears-toolkit-odata",
+      "type": "lib-dep"
+    },
+    {
+      "from": "chat-engine",
+      "to": "cf-gears-toolkit-odata-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "chat-engine",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "chat-engine",
+      "to": "cf-gears-toolkit-utils",
+      "type": "lib-dep"
+    },
+    {
+      "from": "credstore",
+      "to": "authz-resolver",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "credstore",
+      "to": "tenant-resolver",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "credstore",
+      "to": "types-registry",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "credstore",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "credstore",
+      "to": "cf-gears-toolkit-canonical-errors",
+      "type": "lib-dep"
+    },
+    {
+      "from": "credstore",
+      "to": "cf-gears-toolkit-db",
+      "type": "lib-dep"
+    },
+    {
+      "from": "credstore",
+      "to": "cf-gears-toolkit-gts",
+      "type": "lib-dep"
+    },
+    {
+      "from": "credstore",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "credstore",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "static-credstore-plugin",
+      "to": "types-registry",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "static-credstore-plugin",
+      "to": "credstore",
+      "type": "sdk-dep"
+    },
+    {
+      "from": "static-credstore-plugin",
+      "to": "types-registry",
+      "type": "sdk-dep"
+    },
+    {
+      "from": "static-credstore-plugin",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "static-credstore-plugin",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "static-credstore-plugin",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "static-credstore-plugin",
+      "to": "credstore",
+      "type": "extends"
+    },
+    {
+      "from": "file-parser",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "file-parser",
+      "to": "cf-gears-toolkit-canonical-errors",
+      "type": "lib-dep"
+    },
+    {
+      "from": "file-parser",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "file-parser",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "file-storage",
+      "to": "authz-resolver",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "file-storage",
+      "to": "authz-resolver",
+      "type": "sdk-dep"
+    },
+    {
+      "from": "file-storage",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "file-storage",
+      "to": "cf-gears-toolkit-canonical-errors",
+      "type": "lib-dep"
+    },
+    {
+      "from": "file-storage",
+      "to": "cf-gears-toolkit-db",
+      "type": "lib-dep"
+    },
+    {
+      "from": "file-storage",
+      "to": "cf-gears-toolkit-db-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "file-storage",
+      "to": "cf-gears-toolkit-gts",
+      "type": "lib-dep"
+    },
+    {
+      "from": "file-storage",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "file-storage",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "file-storage",
+      "to": "cf-gears-toolkit-utils",
+      "type": "lib-dep"
+    },
+    {
+      "from": "graph-storage",
+      "to": "authz-resolver",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "graph-storage",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "graph-storage",
+      "to": "cf-gears-toolkit-canonical-errors",
+      "type": "lib-dep"
+    },
+    {
+      "from": "graph-storage",
+      "to": "cf-gears-toolkit-db",
+      "type": "lib-dep"
+    },
+    {
+      "from": "graph-storage",
+      "to": "cf-gears-toolkit-db-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "graph-storage",
+      "to": "cf-gears-toolkit-gts",
+      "type": "lib-dep"
+    },
+    {
+      "from": "graph-storage",
+      "to": "cf-gears-toolkit-http",
+      "type": "lib-dep"
+    },
+    {
+      "from": "graph-storage",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "graph-storage",
+      "to": "cf-gears-toolkit-odata",
+      "type": "lib-dep"
+    },
+    {
+      "from": "graph-storage",
+      "to": "cf-gears-toolkit-odata-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "graph-storage",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "llm-gateway",
+      "to": "model-registry",
+      "type": "sdk-dep"
+    },
+    {
+      "from": "llm-gateway",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "llm-gateway",
+      "to": "cf-gears-toolkit-gts",
+      "type": "lib-dep"
+    },
+    {
+      "from": "llm-gateway",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "mini-chat",
+      "to": "types-registry",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "mini-chat",
+      "to": "authn-resolver",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "mini-chat",
+      "to": "authz-resolver",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "mini-chat",
+      "to": "oagw",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "mini-chat",
+      "to": "authn-resolver",
+      "type": "sdk-dep"
+    },
+    {
+      "from": "mini-chat",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "mini-chat",
+      "to": "cf-gears-toolkit-canonical-errors",
+      "type": "lib-dep"
+    },
+    {
+      "from": "mini-chat",
+      "to": "cf-gears-toolkit-db",
+      "type": "lib-dep"
+    },
+    {
+      "from": "mini-chat",
+      "to": "cf-gears-toolkit-db-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "mini-chat",
+      "to": "cf-gears-toolkit-gts",
+      "type": "lib-dep"
+    },
+    {
+      "from": "mini-chat",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "mini-chat",
+      "to": "cf-gears-toolkit-odata",
+      "type": "lib-dep"
+    },
+    {
+      "from": "mini-chat",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "static-model-policy-plugin",
+      "to": "mini-chat",
+      "type": "sdk-dep"
+    },
+    {
+      "from": "static-model-policy-plugin",
+      "to": "types-registry",
+      "type": "sdk-dep"
+    },
+    {
+      "from": "static-model-policy-plugin",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "static-model-policy-plugin",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "static-model-policy-plugin",
+      "to": "mini-chat",
+      "type": "extends"
+    },
+    {
+      "from": "model-registry",
+      "to": "cf-gears-toolkit-gts",
+      "type": "lib-dep"
+    },
+    {
+      "from": "model-registry",
+      "to": "cf-gears-toolkit-odata",
+      "type": "lib-dep"
+    },
+    {
+      "from": "model-registry",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "simple-user-settings",
+      "to": "authz-resolver",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "simple-user-settings",
+      "to": "authz-resolver",
+      "type": "sdk-dep"
+    },
+    {
+      "from": "simple-user-settings",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "simple-user-settings",
+      "to": "cf-gears-toolkit-canonical-errors",
+      "type": "lib-dep"
+    },
+    {
+      "from": "simple-user-settings",
+      "to": "cf-gears-toolkit-db",
+      "type": "lib-dep"
+    },
+    {
+      "from": "simple-user-settings",
+      "to": "cf-gears-toolkit-db-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "simple-user-settings",
+      "to": "cf-gears-toolkit-gts",
+      "type": "lib-dep"
+    },
+    {
+      "from": "simple-user-settings",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "simple-user-settings",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "account-management",
+      "to": "authz-resolver",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "account-management",
+      "to": "types-registry",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "account-management",
+      "to": "resource-group",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "account-management",
+      "to": "tenant-resolver",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "account-management",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "account-management",
+      "to": "cf-gears-toolkit-canonical-errors",
+      "type": "lib-dep"
+    },
+    {
+      "from": "account-management",
+      "to": "cf-gears-toolkit-db",
+      "type": "lib-dep"
+    },
+    {
+      "from": "account-management",
+      "to": "cf-gears-toolkit-db-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "account-management",
+      "to": "cf-gears-toolkit-gts",
+      "type": "lib-dep"
+    },
+    {
+      "from": "account-management",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "account-management",
+      "to": "cf-gears-toolkit-odata",
+      "type": "lib-dep"
+    },
+    {
+      "from": "account-management",
+      "to": "cf-gears-toolkit-odata-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "account-management",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "account-management",
+      "to": "cf-gears-toolkit-utils",
+      "type": "lib-dep"
+    },
+    {
+      "from": "keycloak-idp-plugin",
+      "to": "types-registry",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "keycloak-idp-plugin",
+      "to": "credstore",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "keycloak-idp-plugin",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "keycloak-idp-plugin",
+      "to": "cf-gears-toolkit-gts",
+      "type": "lib-dep"
+    },
+    {
+      "from": "keycloak-idp-plugin",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "keycloak-idp-plugin",
+      "to": "cf-gears-toolkit-odata",
+      "type": "lib-dep"
+    },
+    {
+      "from": "keycloak-idp-plugin",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "keycloak-idp-plugin",
+      "to": "account-management",
+      "type": "extends"
+    },
+    {
+      "from": "static-idp-plugin",
+      "to": "types-registry",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "static-idp-plugin",
+      "to": "account-management",
+      "type": "sdk-dep"
+    },
+    {
+      "from": "static-idp-plugin",
+      "to": "types-registry",
+      "type": "sdk-dep"
+    },
+    {
+      "from": "static-idp-plugin",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "static-idp-plugin",
+      "to": "cf-gears-toolkit-canonical-errors",
+      "type": "lib-dep"
+    },
+    {
+      "from": "static-idp-plugin",
+      "to": "cf-gears-toolkit-gts",
+      "type": "lib-dep"
+    },
+    {
+      "from": "static-idp-plugin",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "static-idp-plugin",
+      "to": "cf-gears-toolkit-odata",
+      "type": "lib-dep"
+    },
+    {
+      "from": "static-idp-plugin",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "static-idp-plugin",
+      "to": "account-management",
+      "type": "extends"
+    },
+    {
+      "from": "api-gateway",
+      "to": "grpc-hub",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "api-gateway",
+      "to": "authn-resolver",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "api-gateway",
+      "to": "authn-resolver",
+      "type": "sdk-dep"
+    },
+    {
+      "from": "api-gateway",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "api-gateway",
+      "to": "cf-gears-toolkit-canonical-errors",
+      "type": "lib-dep"
+    },
+    {
+      "from": "api-gateway",
+      "to": "cf-gears-toolkit-gateway",
+      "type": "lib-dep"
+    },
+    {
+      "from": "api-gateway",
+      "to": "cf-gears-toolkit-gts",
+      "type": "lib-dep"
+    },
+    {
+      "from": "api-gateway",
+      "to": "cf-gears-toolkit-http",
+      "type": "lib-dep"
+    },
+    {
+      "from": "api-gateway",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "api-gateway",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "api-gateway",
+      "to": "cf-gears-toolkit-transport-grpc",
+      "type": "lib-dep"
+    },
+    {
+      "from": "authn-resolver",
+      "to": "types-registry",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "authn-resolver",
+      "to": "types-registry",
+      "type": "sdk-dep"
+    },
+    {
+      "from": "authn-resolver",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "authn-resolver",
+      "to": "cf-gears-toolkit-canonical-errors",
+      "type": "lib-dep"
+    },
+    {
+      "from": "authn-resolver",
+      "to": "cf-gears-toolkit-gts",
+      "type": "lib-dep"
+    },
+    {
+      "from": "authn-resolver",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "authn-resolver",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "oidc-authn-plugin",
+      "to": "types-registry",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "oidc-authn-plugin",
+      "to": "authn-resolver",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "oidc-authn-plugin",
+      "to": "authn-resolver",
+      "type": "sdk-dep"
+    },
+    {
+      "from": "oidc-authn-plugin",
+      "to": "types-registry",
+      "type": "sdk-dep"
+    },
+    {
+      "from": "oidc-authn-plugin",
+      "to": "cf-gears-toolkit-gts",
+      "type": "lib-dep"
+    },
+    {
+      "from": "oidc-authn-plugin",
+      "to": "authn-resolver",
+      "type": "extends"
+    },
+    {
+      "from": "static-authn-plugin",
+      "to": "types-registry",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "static-authn-plugin",
+      "to": "authn-resolver",
+      "type": "sdk-dep"
+    },
+    {
+      "from": "static-authn-plugin",
+      "to": "types-registry",
+      "type": "sdk-dep"
+    },
+    {
+      "from": "static-authn-plugin",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "static-authn-plugin",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "static-authn-plugin",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "static-authn-plugin",
+      "to": "authn-resolver",
+      "type": "extends"
+    },
+    {
+      "from": "authz-resolver",
+      "to": "types-registry",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "authz-resolver",
+      "to": "types-registry",
+      "type": "sdk-dep"
+    },
+    {
+      "from": "authz-resolver",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "authz-resolver",
+      "to": "cf-gears-toolkit-canonical-errors",
+      "type": "lib-dep"
+    },
+    {
+      "from": "authz-resolver",
+      "to": "cf-gears-toolkit-gts",
+      "type": "lib-dep"
+    },
+    {
+      "from": "authz-resolver",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "authz-resolver",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "static-authz-plugin",
+      "to": "types-registry",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "static-authz-plugin",
+      "to": "authz-resolver",
+      "type": "sdk-dep"
+    },
+    {
+      "from": "static-authz-plugin",
+      "to": "types-registry",
+      "type": "sdk-dep"
+    },
+    {
+      "from": "static-authz-plugin",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "static-authz-plugin",
+      "to": "cf-gears-toolkit-gts",
+      "type": "lib-dep"
+    },
+    {
+      "from": "static-authz-plugin",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "static-authz-plugin",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "static-authz-plugin",
+      "to": "authz-resolver",
+      "type": "extends"
+    },
+    {
+      "from": "tr-authz-plugin",
+      "to": "types-registry",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "tr-authz-plugin",
+      "to": "tenant-resolver",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "tr-authz-plugin",
+      "to": "authz-resolver",
+      "type": "sdk-dep"
+    },
+    {
+      "from": "tr-authz-plugin",
+      "to": "tenant-resolver",
+      "type": "sdk-dep"
+    },
+    {
+      "from": "tr-authz-plugin",
+      "to": "types-registry",
+      "type": "sdk-dep"
+    },
+    {
+      "from": "tr-authz-plugin",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "tr-authz-plugin",
+      "to": "cf-gears-toolkit-gts",
+      "type": "lib-dep"
+    },
+    {
+      "from": "tr-authz-plugin",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "tr-authz-plugin",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "tr-authz-plugin",
+      "to": "authz-resolver",
+      "type": "extends"
+    },
+    {
+      "from": "cluster",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "cluster",
+      "to": "cf-gears-toolkit-gts",
+      "type": "lib-dep"
+    },
+    {
+      "from": "postgres-cluster-plugin",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "postgres-cluster-plugin",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "postgres-cluster-plugin",
+      "to": "cluster",
+      "type": "extends"
+    },
+    {
+      "from": "standalone-cluster-plugin",
+      "to": "cluster",
+      "type": "extends"
+    },
+    {
+      "from": "event-broker",
+      "to": "cluster",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "event-broker",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "event-broker",
+      "to": "cf-gears-toolkit-canonical-errors",
+      "type": "lib-dep"
+    },
+    {
+      "from": "event-broker",
+      "to": "cf-gears-toolkit-db",
+      "type": "lib-dep"
+    },
+    {
+      "from": "event-broker",
+      "to": "cf-gears-toolkit-gts",
+      "type": "lib-dep"
+    },
+    {
+      "from": "event-broker",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "event-broker",
+      "to": "cf-gears-toolkit-stable-hash",
+      "type": "lib-dep"
+    },
+    {
+      "from": "gear-orchestrator",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "gear-orchestrator",
+      "to": "cf-gears-toolkit-k8s-auth",
+      "type": "lib-dep"
+    },
+    {
+      "from": "gear-orchestrator",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "gear-orchestrator",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "gear-orchestrator",
+      "to": "cf-gears-toolkit-transport-grpc",
+      "type": "lib-dep"
+    },
+    {
+      "from": "grpc-hub",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "grpc-hub",
+      "to": "cf-gears-toolkit-transport-grpc",
+      "type": "lib-dep"
+    },
+    {
+      "from": "nodes-registry",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "nodes-registry",
+      "to": "cf-gears-toolkit-canonical-errors",
+      "type": "lib-dep"
+    },
+    {
+      "from": "nodes-registry",
+      "to": "cf-gears-toolkit-gts",
+      "type": "lib-dep"
+    },
+    {
+      "from": "nodes-registry",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "nodes-registry",
+      "to": "cf-gears-toolkit-node-info",
+      "type": "lib-dep"
+    },
+    {
+      "from": "oagw",
+      "to": "types-registry",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "oagw",
+      "to": "authz-resolver",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "oagw",
+      "to": "credstore",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "oagw",
+      "to": "tenant-resolver",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "oagw",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "oagw",
+      "to": "cf-gears-toolkit-auth",
+      "type": "lib-dep"
+    },
+    {
+      "from": "oagw",
+      "to": "cf-gears-toolkit-canonical-errors",
+      "type": "lib-dep"
+    },
+    {
+      "from": "oagw",
+      "to": "cf-gears-toolkit-gts",
+      "type": "lib-dep"
+    },
+    {
+      "from": "oagw",
+      "to": "cf-gears-toolkit-http",
+      "type": "lib-dep"
+    },
+    {
+      "from": "oagw",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "oagw",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "resource-group",
+      "to": "authz-resolver",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "resource-group",
+      "to": "types-registry",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "resource-group",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "resource-group",
+      "to": "cf-gears-toolkit-canonical-errors",
+      "type": "lib-dep"
+    },
+    {
+      "from": "resource-group",
+      "to": "cf-gears-toolkit-db",
+      "type": "lib-dep"
+    },
+    {
+      "from": "resource-group",
+      "to": "cf-gears-toolkit-db-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "resource-group",
+      "to": "cf-gears-toolkit-gts",
+      "type": "lib-dep"
+    },
+    {
+      "from": "resource-group",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "resource-group",
+      "to": "cf-gears-toolkit-odata",
+      "type": "lib-dep"
+    },
+    {
+      "from": "resource-group",
+      "to": "cf-gears-toolkit-odata-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "resource-group",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "tenant-resolver",
+      "to": "types-registry",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "tenant-resolver",
+      "to": "types-registry",
+      "type": "sdk-dep"
+    },
+    {
+      "from": "tenant-resolver",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "tenant-resolver",
+      "to": "cf-gears-toolkit-canonical-errors",
+      "type": "lib-dep"
+    },
+    {
+      "from": "tenant-resolver",
+      "to": "cf-gears-toolkit-gts",
+      "type": "lib-dep"
+    },
+    {
+      "from": "tenant-resolver",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "tenant-resolver",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "rg-tr-plugin",
+      "to": "types-registry",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "rg-tr-plugin",
+      "to": "resource-group",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "rg-tr-plugin",
+      "to": "resource-group",
+      "type": "sdk-dep"
+    },
+    {
+      "from": "rg-tr-plugin",
+      "to": "tenant-resolver",
+      "type": "sdk-dep"
+    },
+    {
+      "from": "rg-tr-plugin",
+      "to": "types-registry",
+      "type": "sdk-dep"
+    },
+    {
+      "from": "rg-tr-plugin",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "rg-tr-plugin",
+      "to": "cf-gears-toolkit-canonical-errors",
+      "type": "lib-dep"
+    },
+    {
+      "from": "rg-tr-plugin",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "rg-tr-plugin",
+      "to": "cf-gears-toolkit-odata",
+      "type": "lib-dep"
+    },
+    {
+      "from": "rg-tr-plugin",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "rg-tr-plugin",
+      "to": "tenant-resolver",
+      "type": "extends"
+    },
+    {
+      "from": "single-tenant-tr-plugin",
+      "to": "types-registry",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "single-tenant-tr-plugin",
+      "to": "tenant-resolver",
+      "type": "sdk-dep"
+    },
+    {
+      "from": "single-tenant-tr-plugin",
+      "to": "types-registry",
+      "type": "sdk-dep"
+    },
+    {
+      "from": "single-tenant-tr-plugin",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "single-tenant-tr-plugin",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "single-tenant-tr-plugin",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "single-tenant-tr-plugin",
+      "to": "tenant-resolver",
+      "type": "extends"
+    },
+    {
+      "from": "static-tr-plugin",
+      "to": "types-registry",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "static-tr-plugin",
+      "to": "tenant-resolver",
+      "type": "sdk-dep"
+    },
+    {
+      "from": "static-tr-plugin",
+      "to": "types-registry",
+      "type": "sdk-dep"
+    },
+    {
+      "from": "static-tr-plugin",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "static-tr-plugin",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "static-tr-plugin",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "static-tr-plugin",
+      "to": "tenant-resolver",
+      "type": "extends"
+    },
+    {
+      "from": "types-registry",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "types-registry",
+      "to": "cf-gears-toolkit-canonical-errors",
+      "type": "lib-dep"
+    },
+    {
+      "from": "types-registry",
+      "to": "cf-gears-toolkit-gts",
+      "type": "lib-dep"
+    },
+    {
+      "from": "types-registry",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "types-registry",
+      "to": "cf-gears-toolkit-utils",
+      "type": "lib-dep"
+    },
+    {
+      "from": "usage-collector",
+      "to": "types-registry",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "usage-collector",
+      "to": "authz-resolver",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "usage-collector",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "usage-collector",
+      "to": "cf-gears-toolkit-canonical-errors",
+      "type": "lib-dep"
+    },
+    {
+      "from": "usage-collector",
+      "to": "cf-gears-toolkit-gts",
+      "type": "lib-dep"
+    },
+    {
+      "from": "usage-collector",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "usage-collector",
+      "to": "cf-gears-toolkit-odata",
+      "type": "lib-dep"
+    },
+    {
+      "from": "usage-collector",
+      "to": "cf-gears-toolkit-odata-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "usage-collector",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "noop-usage-collector-plugin",
+      "to": "types-registry",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "noop-usage-collector-plugin",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "noop-usage-collector-plugin",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "noop-usage-collector-plugin",
+      "to": "cf-gears-toolkit-odata",
+      "type": "lib-dep"
+    },
+    {
+      "from": "noop-usage-collector-plugin",
+      "to": "usage-collector",
+      "type": "extends"
+    },
+    {
+      "from": "timescaledb-usage-collector-plugin",
+      "to": "types-registry",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "timescaledb-usage-collector-plugin",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "timescaledb-usage-collector-plugin",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "timescaledb-usage-collector-plugin",
+      "to": "cf-gears-toolkit-odata",
+      "type": "lib-dep"
+    },
+    {
+      "from": "timescaledb-usage-collector-plugin",
+      "to": "usage-collector",
+      "type": "extends"
+    },
+    {
+      "from": "ledger",
+      "to": "types-registry",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "ledger",
+      "to": "authz-resolver",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "ledger",
+      "to": "account-management",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "ledger",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "ledger",
+      "to": "cf-gears-toolkit-canonical-errors",
+      "type": "lib-dep"
+    },
+    {
+      "from": "ledger",
+      "to": "cf-gears-toolkit-db",
+      "type": "lib-dep"
+    },
+    {
+      "from": "ledger",
+      "to": "cf-gears-toolkit-db-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "ledger",
+      "to": "cf-gears-toolkit-gts",
+      "type": "lib-dep"
+    },
+    {
+      "from": "ledger",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "ledger",
+      "to": "cf-gears-toolkit-odata",
+      "type": "lib-dep"
+    },
+    {
+      "from": "ledger",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "pricing",
+      "to": "types-registry",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "pricing",
+      "to": "authz-resolver",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "pricing",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "pricing",
+      "to": "cf-gears-toolkit-canonical-errors",
+      "type": "lib-dep"
+    },
+    {
+      "from": "pricing",
+      "to": "cf-gears-toolkit-db",
+      "type": "lib-dep"
+    },
+    {
+      "from": "pricing",
+      "to": "cf-gears-toolkit-db-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "pricing",
+      "to": "cf-gears-toolkit-gts",
+      "type": "lib-dep"
+    },
+    {
+      "from": "pricing",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "pricing",
+      "to": "cf-gears-toolkit-odata",
+      "type": "lib-dep"
+    },
+    {
+      "from": "pricing",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "rate-provider",
+      "to": "types-registry",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "rate-provider",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "rate-provider",
+      "to": "cf-gears-toolkit-gts",
+      "type": "lib-dep"
+    },
+    {
+      "from": "rate-provider",
+      "to": "cf-gears-toolkit-http",
+      "type": "lib-dep"
+    },
+    {
+      "from": "rate-provider",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "rate-provider",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "ecb-plugin",
+      "to": "types-registry",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "ecb-plugin",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "ecb-plugin",
+      "to": "cf-gears-toolkit-http",
+      "type": "lib-dep"
+    },
+    {
+      "from": "ecb-plugin",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "ecb-plugin",
+      "to": "rate-provider",
+      "type": "extends"
+    },
+    {
+      "from": "http-json-plugin",
+      "to": "types-registry",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "http-json-plugin",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "http-json-plugin",
+      "to": "cf-gears-toolkit-http",
+      "type": "lib-dep"
+    },
+    {
+      "from": "http-json-plugin",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "http-json-plugin",
+      "to": "rate-provider",
+      "type": "extends"
+    },
+    {
+      "from": "api-contracts",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "api-contracts",
+      "to": "cf-gears-toolkit-canonical-errors",
+      "type": "lib-dep"
+    },
+    {
+      "from": "api-contracts",
+      "to": "cf-gears-toolkit-canonical-errors-macro",
+      "type": "lib-dep"
+    },
+    {
+      "from": "api-contracts",
+      "to": "cf-gears-toolkit-contract",
+      "type": "lib-dep"
+    },
+    {
+      "from": "api-contracts",
+      "to": "cf-gears-toolkit-contract-protogen",
+      "type": "lib-dep"
+    },
+    {
+      "from": "api-contracts",
+      "to": "cf-gears-toolkit-http",
+      "type": "lib-dep"
+    },
+    {
+      "from": "api-contracts",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "api-contracts",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "api-contracts",
+      "to": "cf-gears-toolkit-transport-grpc",
+      "type": "lib-dep"
+    },
+    {
+      "from": "users-info",
+      "to": "authz-resolver",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "users-info",
+      "to": "authz-resolver",
+      "type": "sdk-dep"
+    },
+    {
+      "from": "users-info",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "users-info",
+      "to": "cf-gears-toolkit-canonical-errors",
+      "type": "lib-dep"
+    },
+    {
+      "from": "users-info",
+      "to": "cf-gears-toolkit-db",
+      "type": "lib-dep"
+    },
+    {
+      "from": "users-info",
+      "to": "cf-gears-toolkit-db-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "users-info",
+      "to": "cf-gears-toolkit-gts",
+      "type": "lib-dep"
+    },
+    {
+      "from": "users-info",
+      "to": "cf-gears-toolkit-http",
+      "type": "lib-dep"
+    },
+    {
+      "from": "users-info",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "users-info",
+      "to": "cf-gears-toolkit-odata",
+      "type": "lib-dep"
+    },
+    {
+      "from": "users-info",
+      "to": "cf-gears-toolkit-odata-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "users-info",
+      "to": "cf-gears-toolkit-sdk",
+      "type": "lib-dep"
+    },
+    {
+      "from": "users-info",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "calculator",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "calculator",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "calculator",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    },
+    {
+      "from": "calculator",
+      "to": "cf-gears-toolkit-transport-grpc",
+      "type": "lib-dep"
+    },
+    {
+      "from": "calculator-gateway",
+      "to": "calculator",
+      "type": "runtime-dep"
+    },
+    {
+      "from": "calculator-gateway",
+      "to": "cf-gears-toolkit",
+      "type": "lib-dep"
+    },
+    {
+      "from": "calculator-gateway",
+      "to": "cf-gears-toolkit-macros",
+      "type": "lib-dep"
+    },
+    {
+      "from": "calculator-gateway",
+      "to": "cf-gears-toolkit-security",
+      "type": "lib-dep"
+    }
+  ],
+  "unresolved_runtime_deps": []
+}

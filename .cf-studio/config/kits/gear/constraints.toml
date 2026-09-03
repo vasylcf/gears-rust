@@ -1,0 +1,677 @@
+# Gear Creation Kit — deterministic artifact contracts
+#
+# Heading contracts, cpt identifier templates, and cross-artifact coverage for
+# the seven gear artifact kinds. Structure aligns with the gears-rust spec
+# templates (docs/spec-templates/gears-sdlc/*) and the SDLC kit contract;
+# gear-specific sections (classification, gear structure, gate results) are
+# kit-owned additions.
+
+# ── GEAR-INTENT ───────────────────────────────────────────────────────
+
+[[artifacts.GEAR-INTENT.headings]]
+id = "intent-h1-title"
+level = 1
+required = true
+multiple = false
+numbered = false
+pattern = "GEAR-INTENT\\s*[—–-]\\s*.+"
+description = "Intent title: GEAR-INTENT — <request name>."
+
+[[artifacts.GEAR-INTENT.headings]]
+id = "intent-request"
+level = 2
+required = true
+multiple = false
+numbered = false
+pattern = "Request"
+description = "The need in the requester's terms: problem, desired capability, acceptance outcome."
+
+[[artifacts.GEAR-INTENT.headings]]
+id = "intent-classification"
+level = 2
+required = true
+multiple = false
+numbered = false
+pattern = "Classification"
+description = "Request class (new gear | plugin | docs-only spec | small fix) with justification."
+
+[[artifacts.GEAR-INTENT.headings]]
+id = "intent-similar-gears"
+level = 2
+required = true
+multiple = false
+numbered = false
+pattern = "Similar Gears"
+description = "Catalog lookup results: closest existing gears and the reuse-or-build call."
+
+[[artifacts.GEAR-INTENT.headings]]
+id = "intent-reuse-profile"
+level = 2
+required = true
+multiple = false
+numbered = false
+pattern = "Reuse Profile"
+description = "Archetype, reference gear to imitate, core/optional toolkit libraries, platform dependencies."
+
+[[artifacts.GEAR-INTENT.headings]]
+id = "intent-document-set"
+level = 2
+required = true
+multiple = false
+numbered = false
+pattern = "Document Set"
+description = "Which specification documents this request needs, and why."
+
+[[artifacts.GEAR-INTENT.headings]]
+id = "intent-route"
+level = 2
+required = true
+multiple = false
+numbered = false
+pattern = "Route Decision"
+description = "The confirmed route: workflow sequence and first next step."
+
+[artifacts.GEAR-INTENT.identifiers.intent]
+name = "Gear Intent"
+description = "One classified gear-creation request; the root of the gear's traceability chain."
+required = true
+task = false
+priority = false
+to_code = false
+template = "cpt-{system}-intent-{slug}"
+headings = ["intent-h1-title"]
+
+# ── GEAR-PRD ──────────────────────────────────────────────────────────
+
+[[artifacts.GEAR-PRD.headings]]
+id = "gear-prd-h1-title"
+level = 1
+required = true
+multiple = false
+numbered = false
+pattern = "PRD\\s*[—–-]\\s*.+"
+description = "PRD title: PRD — <gear name>."
+
+[[artifacts.GEAR-PRD.headings]]
+id = "gear-prd-overview"
+level = 2
+required = true
+multiple = false
+numbered = true
+pattern = "Overview"
+description = "Purpose, background, goals."
+
+[[artifacts.GEAR-PRD.headings]]
+id = "gear-prd-classification"
+level = 2
+required = true
+multiple = false
+numbered = true
+pattern = "Gear Classification"
+description = "Kit-specific: tier, capabilities, archetype, similar gears from intake."
+
+[[artifacts.GEAR-PRD.headings]]
+id = "gear-prd-actors"
+level = 2
+required = true
+multiple = false
+numbered = true
+pattern = "Actors"
+description = "Human and system actors interacting with the gear."
+
+[[artifacts.GEAR-PRD.headings]]
+id = "gear-prd-scope"
+level = 2
+required = true
+multiple = false
+numbered = true
+pattern = "Scope"
+description = "In scope / out of scope."
+
+[[artifacts.GEAR-PRD.headings]]
+id = "gear-prd-fr"
+level = 2
+required = true
+multiple = false
+numbered = true
+pattern = "Functional Requirements"
+description = "WHAT the gear must do; cpt fr IDs with priorities."
+
+[[artifacts.GEAR-PRD.headings]]
+id = "gear-prd-fr-item"
+level = 4
+required = true
+multiple = true
+numbered = false
+description = "One functional requirement."
+
+[[artifacts.GEAR-PRD.headings]]
+id = "gear-prd-nfr"
+level = 2
+required = true
+multiple = false
+numbered = true
+pattern = "Non-Functional Requirements"
+description = "Gear-specific NFRs beyond platform defaults, and exclusions."
+
+[[artifacts.GEAR-PRD.headings]]
+id = "gear-prd-interfaces"
+level = 2
+required = true
+multiple = false
+numbered = true
+pattern = "Public Interfaces"
+description = "SDK surface, REST/gRPC presence, GTS extension points — WHAT is exposed, not contracts."
+
+[[artifacts.GEAR-PRD.headings]]
+id = "gear-prd-use-cases"
+level = 2
+required = true
+multiple = false
+numbered = true
+pattern = "Use Cases"
+description = "Key interaction flows."
+
+[[artifacts.GEAR-PRD.headings]]
+id = "gear-prd-acceptance"
+level = 2
+required = true
+multiple = false
+numbered = true
+pattern = "Acceptance Criteria"
+description = "Business-level acceptance for the gear as a whole."
+
+[[artifacts.GEAR-PRD.headings]]
+id = "gear-prd-dependencies"
+level = 2
+required = true
+multiple = false
+numbered = true
+pattern = "Dependencies"
+description = "Platform gears, toolkit libraries, external systems."
+
+[[artifacts.GEAR-PRD.headings]]
+id = "gear-prd-risks"
+level = 2
+required = true
+multiple = false
+numbered = true
+pattern = "Risks"
+description = "Risks with impact and mitigation."
+
+[artifacts.GEAR-PRD.identifiers.actor]
+name = "Actor"
+description = "Human or system actor of the gear."
+required = false
+task = false
+priority = false
+to_code = false
+template = "cpt-{system}-actor-{slug}"
+headings = ["gear-prd-actors"]
+
+[artifacts.GEAR-PRD.identifiers.fr]
+name = "Functional Requirement"
+description = "One verifiable functional requirement of the gear."
+required = true
+task = true
+priority = true
+to_code = false
+template = "cpt-{system}-fr-{slug}"
+headings = ["gear-prd-fr-item"]
+
+[artifacts.GEAR-PRD.identifiers.fr.references.GEAR-DESIGN]
+coverage = true
+headings = ["gear-design-drivers"]
+
+[artifacts.GEAR-PRD.identifiers.nfr]
+name = "Non-Functional Requirement"
+description = "One measurable gear-specific NFR."
+required = false
+task = true
+priority = true
+to_code = false
+template = "cpt-{system}-nfr-{slug}"
+headings = ["gear-prd-nfr"]
+
+[artifacts.GEAR-PRD.identifiers.nfr.references.GEAR-DESIGN]
+coverage = true
+headings = ["gear-design-drivers"]
+
+[artifacts.GEAR-PRD.identifiers.usecase]
+name = "Use Case"
+description = "One interaction flow."
+required = false
+task = true
+priority = true
+to_code = false
+template = "cpt-{system}-usecase-{slug}"
+headings = ["gear-prd-use-cases"]
+
+[artifacts.GEAR-PRD.identifiers.interface]
+name = "Public Interface"
+description = "One public interface surface exposed by the gear (SDK trait, type set)."
+required = false
+task = true
+priority = true
+to_code = false
+template = "cpt-{system}-interface-{slug}"
+headings = ["gear-prd-interfaces"]
+
+[artifacts.GEAR-PRD.identifiers.contract]
+name = "Integration Contract"
+description = "One external integration contract the gear provides or requires."
+required = false
+task = true
+priority = true
+to_code = false
+template = "cpt-{system}-contract-{slug}"
+headings = ["gear-prd-interfaces"]
+
+# ── GEAR-DESIGN ───────────────────────────────────────────────────────
+
+[[artifacts.GEAR-DESIGN.headings]]
+id = "gear-design-h1-title"
+level = 1
+required = true
+multiple = false
+numbered = false
+description = "DESIGN document title (H1)."
+
+[[artifacts.GEAR-DESIGN.headings]]
+id = "gear-design-overview"
+level = 2
+required = true
+multiple = false
+numbered = true
+pattern = "Architecture Overview"
+description = "Vision and approach."
+
+[[artifacts.GEAR-DESIGN.headings]]
+id = "gear-design-drivers"
+level = 3
+required = true
+multiple = false
+numbered = true
+pattern = "Architecture Drivers"
+description = "FR/NFR driver tables and the ADR list — the coverage anchor for PRD requirements and ADRs."
+
+[[artifacts.GEAR-DESIGN.headings]]
+id = "gear-design-structure"
+level = 2
+required = true
+multiple = false
+numbered = true
+pattern = "Gear Structure"
+description = "Kit-specific: crates, layers, capabilities, registration surface."
+
+[[artifacts.GEAR-DESIGN.headings]]
+id = "gear-design-domain"
+level = 2
+required = true
+multiple = false
+numbered = true
+pattern = "Domain Model and GTS Types"
+description = "Entities, GTS type/instance declarations, error catalog."
+
+[[artifacts.GEAR-DESIGN.headings]]
+id = "gear-design-components"
+level = 2
+required = true
+multiple = false
+numbered = true
+pattern = "Component Model"
+description = "Components with responsibilities and boundaries."
+
+[[artifacts.GEAR-DESIGN.headings]]
+id = "gear-design-component-item"
+level = 3
+required = true
+multiple = true
+numbered = false
+description = "One component."
+
+[[artifacts.GEAR-DESIGN.headings]]
+id = "gear-design-api"
+level = 2
+required = true
+multiple = false
+numbered = true
+pattern = "API Surface"
+description = "SDK traits, REST endpoints overview, plugin seams."
+
+[[artifacts.GEAR-DESIGN.headings]]
+id = "gear-design-dependencies"
+level = 2
+required = true
+multiple = false
+numbered = true
+pattern = "Dependencies"
+description = "Gear runtime deps, toolkit libraries, external systems."
+
+[[artifacts.GEAR-DESIGN.headings]]
+id = "gear-design-interactions"
+level = 2
+required = true
+multiple = false
+numbered = true
+pattern = "Interactions"
+description = "Key sequences."
+
+[[artifacts.GEAR-DESIGN.headings]]
+id = "gear-design-storage"
+level = 2
+required = true
+multiple = false
+numbered = true
+pattern = "Storage"
+description = "Entities, tables, migrations — or an explicit statement that the gear is stateless."
+
+[artifacts.GEAR-DESIGN.identifiers.component]
+name = "Component"
+description = "One design component of the gear."
+required = true
+task = true
+priority = true
+to_code = false
+template = "cpt-{system}-component-{slug}"
+headings = ["gear-design-component-item"]
+
+[artifacts.GEAR-DESIGN.identifiers.seq]
+name = "Sequence"
+description = "One key interaction sequence."
+required = false
+task = false
+priority = false
+to_code = false
+template = "cpt-{system}-seq-{slug}"
+headings = ["gear-design-interactions"]
+
+# ── GEAR-ADR ──────────────────────────────────────────────────────────
+
+[[artifacts.GEAR-ADR.headings]]
+id = "gear-adr-h1-title"
+level = 1
+required = true
+multiple = false
+numbered = false
+description = "ADR document title (H1)."
+
+[[artifacts.GEAR-ADR.headings]]
+id = "gear-adr-context"
+level = 2
+required = true
+multiple = false
+numbered = false
+pattern = "Context and Problem Statement"
+description = "Problem context and motivating forces."
+
+[[artifacts.GEAR-ADR.headings]]
+id = "gear-adr-decision-drivers"
+level = 2
+required = true
+multiple = false
+numbered = false
+pattern = "Decision Drivers"
+description = "Key decision drivers and constraints."
+
+[[artifacts.GEAR-ADR.headings]]
+id = "gear-adr-considered-options"
+level = 2
+required = true
+multiple = false
+numbered = false
+pattern = "Considered Options"
+description = "Options that were considered."
+
+[[artifacts.GEAR-ADR.headings]]
+id = "gear-adr-decision-outcome"
+level = 2
+required = true
+multiple = false
+numbered = false
+pattern = "Decision Outcome"
+description = "Selected decision and outcome."
+
+[[artifacts.GEAR-ADR.headings]]
+id = "gear-adr-consequences"
+level = 3
+required = true
+multiple = false
+numbered = false
+pattern = "Consequences"
+description = "Consequences of the decision."
+
+[[artifacts.GEAR-ADR.headings]]
+id = "gear-adr-confirmation"
+level = 3
+required = true
+multiple = false
+numbered = false
+pattern = "Confirmation"
+description = "How compliance with the decision is confirmed."
+
+[[artifacts.GEAR-ADR.headings]]
+id = "gear-adr-pros-cons"
+level = 2
+required = true
+multiple = false
+numbered = false
+pattern = "Pros and Cons of the Options"
+description = "Per-option arguments."
+
+[[artifacts.GEAR-ADR.headings]]
+id = "gear-adr-option-item"
+level = 3
+required = true
+multiple = true
+numbered = false
+description = "One considered option."
+
+[artifacts.GEAR-ADR.identifiers.adr]
+name = "Architecture Decision Record"
+description = "A documented gear architecture decision; referenced from GEAR-DESIGN."
+required = true
+task = false
+priority = false
+to_code = false
+template = "cpt-{system}-adr-{slug}"
+headings = ["gear-adr-h1-title"]
+
+[artifacts.GEAR-ADR.identifiers.adr.references.GEAR-DESIGN]
+coverage = true
+headings = ["gear-design-drivers"]
+
+# ── GEAR-DECOMPOSITION ────────────────────────────────────────────────
+
+[[artifacts.GEAR-DECOMPOSITION.headings]]
+id = "gear-decomp-h1-title"
+level = 1
+required = true
+multiple = false
+numbered = false
+description = "DECOMPOSITION document title (H1)."
+
+[[artifacts.GEAR-DECOMPOSITION.headings]]
+id = "gear-decomp-overview"
+level = 2
+required = true
+multiple = false
+numbered = false
+pattern = "Overview"
+description = "Delivery strategy and phase ordering rationale."
+
+[[artifacts.GEAR-DECOMPOSITION.headings]]
+id = "gear-decomp-phases"
+level = 2
+required = true
+multiple = false
+numbered = false
+pattern = "Phases"
+description = "The ordered implementation phases."
+
+[[artifacts.GEAR-DECOMPOSITION.headings]]
+id = "gear-decomp-phase-item"
+level = 3
+required = true
+multiple = true
+numbered = false
+description = "One implementation phase."
+
+[[artifacts.GEAR-DECOMPOSITION.headings]]
+id = "gear-decomp-phase-scope"
+level = 4
+required = true
+multiple = true
+numbered = false
+pattern = "Scope"
+description = "What the phase delivers, mapped to requirements and design elements."
+
+[[artifacts.GEAR-DECOMPOSITION.headings]]
+id = "gear-decomp-phase-criteria"
+level = 4
+required = true
+multiple = true
+numbered = false
+pattern = "Completion Criteria"
+description = "Verifiable exit criteria: the workspace builds, runs, and passes tests."
+
+[[artifacts.GEAR-DECOMPOSITION.headings]]
+id = "gear-decomp-phase-gate"
+level = 4
+required = true
+multiple = true
+numbered = false
+pattern = "Gate"
+description = "The exact deterministic command(s) that prove the criteria."
+
+[artifacts.GEAR-DECOMPOSITION.identifiers.phase]
+name = "Implementation Phase"
+description = "One buildable-runnable-tested implementation phase."
+required = true
+task = true
+priority = true
+to_code = false
+template = "cpt-{system}-phase-{slug}"
+headings = ["gear-decomp-phase-item"]
+
+# ── GEAR-FEATURE ──────────────────────────────────────────────────────
+
+[[artifacts.GEAR-FEATURE.headings]]
+id = "gear-feature-h1-title"
+level = 1
+required = true
+multiple = false
+numbered = false
+description = "FEATURE document title (H1)."
+
+[[artifacts.GEAR-FEATURE.headings]]
+id = "gear-feature-summary"
+level = 2
+required = true
+multiple = false
+numbered = false
+pattern = "Summary"
+description = "What the feature does and which requirements it implements."
+
+[[artifacts.GEAR-FEATURE.headings]]
+id = "gear-feature-behavior"
+level = 2
+required = true
+multiple = false
+numbered = false
+pattern = "Behavior"
+description = "Flows, algorithms, states."
+
+[[artifacts.GEAR-FEATURE.headings]]
+id = "gear-feature-dod"
+level = 2
+required = true
+multiple = false
+numbered = false
+pattern = "Definition of Done"
+description = "Testable completion conditions."
+
+[[artifacts.GEAR-FEATURE.headings]]
+id = "gear-feature-tests"
+level = 2
+required = true
+multiple = false
+numbered = false
+pattern = "Test Scenarios"
+description = "Scenarios verifying the definition of done."
+
+[artifacts.GEAR-FEATURE.identifiers.feature]
+name = "Feature"
+description = "One implementable feature specification."
+required = true
+task = true
+priority = true
+to_code = false
+template = "cpt-{system}-feature-{slug}"
+headings = ["gear-feature-h1-title"]
+
+# ── GEAR-IMPL-REPORT ──────────────────────────────────────────────────
+
+[[artifacts.GEAR-IMPL-REPORT.headings]]
+id = "gear-report-h1-title"
+level = 1
+required = true
+multiple = false
+numbered = false
+pattern = "GEAR-IMPL-REPORT\\s*[—–-]\\s*.+"
+description = "Report title: GEAR-IMPL-REPORT — <gear> phase <n>."
+
+[[artifacts.GEAR-IMPL-REPORT.headings]]
+id = "gear-report-phase"
+level = 2
+required = true
+multiple = false
+numbered = false
+pattern = "Phase Reference"
+description = "Which decomposition phase this report closes."
+
+[[artifacts.GEAR-IMPL-REPORT.headings]]
+id = "gear-report-summary"
+level = 2
+required = true
+multiple = false
+numbered = false
+pattern = "Work Summary"
+description = "What was built, changed, and tested in this phase."
+
+[[artifacts.GEAR-IMPL-REPORT.headings]]
+id = "gear-report-gates"
+level = 2
+required = true
+multiple = false
+numbered = false
+pattern = "Gate Results"
+description = "Each gate command executed, with outcome."
+
+[[artifacts.GEAR-IMPL-REPORT.headings]]
+id = "gear-report-deviations"
+level = 2
+required = true
+multiple = false
+numbered = false
+pattern = "Deviations"
+description = "Departures from the decomposition, or an explicit 'none'."
+
+[[artifacts.GEAR-IMPL-REPORT.headings]]
+id = "gear-report-next"
+level = 2
+required = true
+multiple = false
+numbered = false
+pattern = "Next Phase"
+description = "The next phase to execute, or delivery completion."
+
+[artifacts.GEAR-IMPL-REPORT.identifiers.report]
+name = "Implementation Phase Report"
+description = "The gate-audited close-out record of one implementation phase."
+required = true
+task = false
+priority = false
+to_code = false
+template = "cpt-{system}-report-{slug}"
+headings = ["gear-report-h1-title"]
