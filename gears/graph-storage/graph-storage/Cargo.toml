@@ -1,11 +1,10 @@
 [package]
-name = "cf-gears-graph-storage"
+name = "weftgraph"
 version = "0.1.2"
-publish = false
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
-repository.workspace = true
+repository = "https://github.com/vasylcf/gears-rust"
 rust-version.workspace = true
 readme = "README.md"
 description = "Graph Storage gear: typed, multi-tenant knowledge graph with search and traversal over a pluggable store"

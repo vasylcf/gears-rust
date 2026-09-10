@@ -1,11 +1,10 @@
 [package]
-name = "cf-gears-graph-storage-remote-embedding-plugin"
+name = "weftgraph-remote-embedding-plugin"
 version = "0.1.0"
-publish = false
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
-repository.workspace = true
+repository = "https://github.com/vasylcf/gears-rust"
 rust-version.workspace = true
 readme = "README.md"
 description = "Remote embedding provider for the graph-storage gear: the alternative plugin of ADR-0004, over the OpenAI-compatible /embeddings protocol"

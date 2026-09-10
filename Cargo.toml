@@ -408,10 +408,10 @@ aws-lc-rs = "1.17"
 credstore-sdk = { package = "cf-gears-credstore-sdk", version = "0.2.12", path = "gears/credstore/credstore-sdk" }
 
 # graph-storage
-graph-storage = { package = "cf-gears-graph-storage", version = "0.1.1", path = "gears/graph-storage/graph-storage" }
-graph-storage-sdk = { package = "cf-gears-graph-storage-sdk", version = "0.1.1", path = "gears/graph-storage/graph-storage-sdk" }
-onnx-embedding-plugin = { package = "cf-gears-graph-storage-onnx-embedding-plugin", version = "0.1.0", path = "gears/graph-storage/onnx-embedding-plugin" }
-remote-embedding-plugin = { package = "cf-gears-graph-storage-remote-embedding-plugin", version = "0.1.0", path = "gears/graph-storage/remote-embedding-plugin" }
+graph-storage = { package = "weftgraph", version = "0.1.2", path = "gears/graph-storage/graph-storage" }
+graph-storage-sdk = { package = "weftgraph-sdk", version = "0.1.1", path = "gears/graph-storage/graph-storage-sdk" }
+onnx-embedding-plugin = { package = "weftgraph-onnx-embedding-plugin", version = "0.1.0", path = "gears/graph-storage/onnx-embedding-plugin" }
+remote-embedding-plugin = { package = "weftgraph-remote-embedding-plugin", version = "0.1.0", path = "gears/graph-storage/remote-embedding-plugin" }
 
 # mini-chat
 mini-chat-sdk = { package = "cf-gears-mini-chat-sdk", version = "0.10.21", path = "gears/mini-chat/mini-chat-sdk" }

@@ -1,11 +1,10 @@
 [package]
-name = "cf-gears-graph-storage-sdk"
+name = "weftgraph-sdk"
 version = "0.1.1"
-publish = false
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
-repository.workspace = true
+repository = "https://github.com/vasylcf/gears-rust"
 rust-version.workspace = true
 readme = "README.md"
 description = "SDK for the graph-storage gear: client trait, transport-agnostic models, plugin contracts, GTS constants"

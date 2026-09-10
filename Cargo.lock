@@ -2346,7 +2346,6 @@ dependencies = [
  "cf-gears-file-storage",
  "cf-gears-gear-orchestrator",
  "cf-gears-github-mirror",
- "cf-gears-graph-storage",
  "cf-gears-grpc-hub",
  "cf-gears-license-resolver",
  "cf-gears-mini-chat",
@@ -2375,6 +2374,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "users-info",
+ "weftgraph",
 ]
 
 [[package]]
@@ -2571,104 +2571,6 @@ dependencies = [
  "cf-gears-toolkit-security",
  "chrono",
  "serde_json",
-]
-
-[[package]]
-name = "cf-gears-graph-storage"
-version = "0.1.2"
-dependencies = [
- "anyhow",
- "async-trait",
- "aws-lc-rs",
- "axum",
- "cf-gears-authz-resolver",
- "cf-gears-authz-resolver-sdk",
- "cf-gears-graph-storage-onnx-embedding-plugin",
- "cf-gears-graph-storage-remote-embedding-plugin",
- "cf-gears-graph-storage-sdk",
- "cf-gears-test-containers",
- "cf-gears-toolkit",
- "cf-gears-toolkit-canonical-errors",
- "cf-gears-toolkit-db",
- "cf-gears-toolkit-db-macros",
- "cf-gears-toolkit-gts",
- "cf-gears-toolkit-http",
- "cf-gears-toolkit-macros",
- "cf-gears-toolkit-odata",
- "cf-gears-toolkit-odata-macros",
- "cf-gears-toolkit-security",
- "gts",
- "hex",
- "http",
- "jsonschema",
- "sea-orm",
- "sea-orm-migration",
- "serde",
- "serde_json",
- "testcontainers",
- "testcontainers-modules",
- "thiserror 2.0.18",
- "time",
- "tokio",
- "tokio-util",
- "tracing",
- "utoipa",
- "uuid",
-]
-
-[[package]]
-name = "cf-gears-graph-storage-onnx-embedding-plugin"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "aws-lc-rs",
- "cf-gears-graph-storage-sdk",
- "hex",
- "ort",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokenizers",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
-name = "cf-gears-graph-storage-remote-embedding-plugin"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "cf-gears-graph-storage-sdk",
- "reqwest",
- "secrecy",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util",
- "tracing",
- "url",
- "wiremock",
-]
-
-[[package]]
-name = "cf-gears-graph-storage-sdk"
-version = "0.1.1"
-dependencies = [
- "async-trait",
- "aws-lc-rs",
- "cf-gears-toolkit-canonical-errors",
- "cf-gears-toolkit-gts",
- "cf-gears-toolkit-odata",
- "cf-gears-toolkit-odata-macros",
- "cf-gears-toolkit-security",
- "hex",
- "serde_json",
- "thiserror 2.0.18",
- "time",
- "tokio-util",
- "uuid",
 ]
 
 [[package]]
@@ -13035,6 +12937,104 @@ name = "weezl"
 version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a28ac98ddc8b9274cb41bb4d9d4d5c425b6020c50c46f25559911905610b4a88"
+
+[[package]]
+name = "weftgraph"
+version = "0.1.2"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "aws-lc-rs",
+ "axum",
+ "cf-gears-authz-resolver",
+ "cf-gears-authz-resolver-sdk",
+ "cf-gears-test-containers",
+ "cf-gears-toolkit",
+ "cf-gears-toolkit-canonical-errors",
+ "cf-gears-toolkit-db",
+ "cf-gears-toolkit-db-macros",
+ "cf-gears-toolkit-gts",
+ "cf-gears-toolkit-http",
+ "cf-gears-toolkit-macros",
+ "cf-gears-toolkit-odata",
+ "cf-gears-toolkit-odata-macros",
+ "cf-gears-toolkit-security",
+ "gts",
+ "hex",
+ "http",
+ "jsonschema",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "testcontainers",
+ "testcontainers-modules",
+ "thiserror 2.0.18",
+ "time",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "utoipa",
+ "uuid",
+ "weftgraph-onnx-embedding-plugin",
+ "weftgraph-remote-embedding-plugin",
+ "weftgraph-sdk",
+]
+
+[[package]]
+name = "weftgraph-onnx-embedding-plugin"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "aws-lc-rs",
+ "hex",
+ "ort",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokenizers",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "weftgraph-sdk",
+]
+
+[[package]]
+name = "weftgraph-remote-embedding-plugin"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "reqwest",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "url",
+ "weftgraph-sdk",
+ "wiremock",
+]
+
+[[package]]
+name = "weftgraph-sdk"
+version = "0.1.1"
+dependencies = [
+ "async-trait",
+ "aws-lc-rs",
+ "cf-gears-toolkit-canonical-errors",
+ "cf-gears-toolkit-gts",
+ "cf-gears-toolkit-odata",
+ "cf-gears-toolkit-odata-macros",
+ "cf-gears-toolkit-security",
+ "hex",
+ "serde_json",
+ "thiserror 2.0.18",
+ "time",
+ "tokio-util",
+ "uuid",
+]
 
 [[package]]
 name = "whoami"
