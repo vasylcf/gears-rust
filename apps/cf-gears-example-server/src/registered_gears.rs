@@ -22,6 +22,7 @@ use github_mirror as _;
 use graph_storage as _;
 #[cfg(feature = "grpc-hub")]
 use grpc_hub as _;
+use license_resolver as _;
 #[cfg(feature = "nodes-registry")]
 use nodes_registry as _;
 #[cfg(feature = "resource-group")]
@@ -48,6 +49,9 @@ use static_authz_plugin as _;
 
 #[cfg(feature = "tr-authz")]
 use tr_authz_plugin as _;
+
+#[cfg(feature = "static-license")]
+use static_license_plugin as _;
 
 #[cfg(feature = "static-credstore")]
 use static_credstore_plugin as _;
