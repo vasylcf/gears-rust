@@ -118,8 +118,8 @@ narrower than what is written.
 | Lane | Cases |
 | --- | --- |
 | unit | 87 |
-| conformance, in-memory store | 56 |
-| conformance, PostgreSQL 19 + pgvector | 65 |
+| conformance, in-memory store | 57 |
+| conformance, PostgreSQL 19 + pgvector | 66 |
 | domain service | 15 |
 | REST, through the gear's own router | 8 |
 | embedding provider contract | 2 |
@@ -166,4 +166,6 @@ cargo run -p cf-gears-example-server --features graph-storage
 - The gear has run continuously in an external assembly (a Studio knowledge
   graph: repository import, a domain-model ontology of 1 254 types, 531 251
   nodes and 637 975 edges) through this whole branch, which is where several
-  of the corrections here came from.
+  of the corrections here came from — including the last one in it: the type
+  catalogue handed out a continuation cursor that nothing would accept, which
+  the suite could not see because no test had ever asked for a second page.
