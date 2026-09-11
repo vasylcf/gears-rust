@@ -25,21 +25,51 @@ implementation ships something the documentation does not sanction — the
 category D-019 needed, since a mode the docs do not describe is neither a
 silent document nor an agreed cut.
 
+Four further forms appear in the headings, and they are outcomes rather than
+new categories — an entry keeps its history instead of being rewritten or
+deleted when the thing it records is dealt with:
+
+- `[impl]` the implementation made a choice the documentation does not
+  describe and does not contradict — a decision worth recording, not a gap.
+- `[closed]`, `[impl-gap, fixed]` the divergence the entry opened is gone. The
+  entry stays because *how it was found* is the part worth reading; the fix is
+  named in it.
+- `[was … now built]`, `[was deferred as D-1xx, now built]` a scope cut or a
+  gap that has since been implemented, carrying the original number so a
+  reader coming from the deferred list lands in the right place.
+- `[doc-gap, superseded by D-0xx]` the finding stands and the conclusion drawn
+  from it was overturned by a later entry. The superseding entry is named in
+  the heading and the reasoning is left in place, because a conclusion that
+  was wrong is evidence about the method that produced it.
+
 **Every entry below has been checked against a running system**, not only
 against the source. Where a claim was testable it was tested — on a live
 PostgreSQL 19 stand, through the gear's own REST surface, or by a regression
 test that fails when the behaviour it describes is reverted. Four entries said
 more than the evidence supported and are corrected; the method that produced
 them was writing the conclusion before running the experiment, so each entry
-now records how it was verified.
+now records how it was verified. A second verification pass (2026-09-11) walked
+the register again against the code rather than against itself and corrected
+seven more claims that had gone stale as the implementation caught up — each
+marked "Corrected after checking" or "Found later" in place, in the entry it
+belongs to, rather than by deleting what had been said.
 
 **Status.** Every `[doc-gap]` below **up to D-016** is folded into PR #4523
 (commit `facd5da29` on `feature/graph-storage-prd-adr`), marked in the
 documents as "Found while building the prototype" so a reader can tell a
-decision taken up front from one the implementation forced. **D-017 through
-D-024 are not**: D-017 and D-018 came out of building vector search after that
-sweep, and D-020 through D-024 out of implementing the element envelope and
-adapting to PR #4639. Doc edits are agreed before they are published. The `[platform-gap]` entries are
+decision taken up front from one the implementation forced. **Of D-017
+through D-024, four now are and three are not.** D-020, D-021, D-022 and D-023
+have been folded in since this paragraph was first written: the audit columns
+are typed `UUID / TEXT` in both table listings (DESIGN § 3.7), PRD
+`fr-tabular-projection` now says the revision rides on each row's envelope
+rather than in the cursor, `GET /edges/{edge_key}` is in the PRD amendment and
+in DESIGN's § 3.3 REST table, and `served_by` is in DESIGN's `ExpandResponse`
+listing beside the sentence that explains why a fallback has to say so.
+**D-017, D-018 and D-024 are not**: the first two came out of building vector
+search after that sweep, and D-024 records a repetition that is deliberate and
+still unstated in DESIGN. Checked by grepping the published documents for each
+of the seven, rather than by trusting the entries' own "folded into the docs"
+lines. Doc edits are agreed before they are published. The `[platform-gap]` entries are
 recorded in the documents too — at the place where they bite — but they close
 only with platform work, so they stay open here. The `[deferred]` entries are
 accepted scope cuts and need no documentation change.
@@ -57,7 +87,8 @@ numbers below were corrected in place.)*
 - **Why:** the platform answer exists; waiting for the status flip blocks everything downstream.
 - **Proposal:** flip ADR-0005 to `accepted` in PR #4523 once #4639 merges, and rewrite its "development stand exception" paragraphs — the raw-SQL exception is gone.
 - **Folded into the docs:** ADR-0005 now records that its raw-SQL exception is spent and what using the platform layer changed. The `proposed` status stays: flipping it is the architect's call, not the implementer's.
-- **How it was checked:** **Verified** by inspection: no `Expr::cust` and no `GRAPH_TABLE` string anywhere in the engine — the pattern is built entirely by the platform builder, so the raw-SQL exception is genuinely unused.
+- **How it was checked:** **Verified** by inspection: no `Expr::cust` and no `GRAPH_TABLE` string anywhere in the **traversal engine** (`src/infra/engine.rs`) — the pattern is built entirely by the platform builder, so the raw-SQL exception this ADR grants for *pattern access* is genuinely unused.
+- **Corrected after checking.** This line used to say "anywhere in the engine", which reads as a claim about the whole gear and is not true of it. `Expr::cust` / `Expr::cust_with_values` appears in four store modules: `src/infra/store/search.rs` (the `websearch_to_tsquery` predicate, the rank expression and the cosine distance), `src/infra/store/projection.rs` (payload extraction and the `::numeric` / `::timestamptz` casts), `src/infra/store/scope.rs` (the scope-attribute extraction) and `src/infra/store/ingest.rs` (the fence's `GREATEST` upsert). Every one of them is a constant SQL fragment with the caller's data bound as a value — never interpolated — which is the rule D-010, D-030 and D-035 each record for their own fragment. None of them is a `GRAPH_TABLE` pattern, which is what the ADR's exception is about, so the conclusion above is unaffected and only its scope needed narrowing.
 
 ## D-002 [doc-gap] PostgreSQL 18+ reports `ON DELETE RESTRICT` as SQLSTATE 23001
 
@@ -86,7 +117,7 @@ numbers below were corrected in place.)*
 - **Proposal:** platform ask, filed as a diagnostics improvement rather than a blocker.
 - **Folded into the docs:** DESIGN § 2.2, the readiness matrix row and ADR-0001 point 2 now say the gear probes by attempting, and separate the reporting gap from the correctness one (`3e88533f1`).
 
-## D-005 [doc-gap] The platform page envelope has no revision slot
+## D-005 [doc-gap, superseded by D-021] The platform page envelope has no revision slot
 
 - **Doc:** PRD `fr-read-consistency` and DESIGN § Read Consistency Contract: every compound read reports the observed `(source_epoch, graph_revision)`, and continuation tokens are "the platform `CursorV1` **extended with the observed graph revision** — not a second token format".
 - **Implementation:** the projection returns `toolkit_odata::Page<T>`, which carries `items` and `page_info { next_cursor, prev_cursor, limit }` and nothing else; `CursorV1` has no revision field a gear can populate. So the tabular projection is the one read path that does **not** report the revision. Search, traversal, node read and ingest all do.
@@ -94,6 +125,7 @@ numbers below were corrected in place.)*
 - **Proposal:** platform ask — a revision (or opaque snapshot-identity) slot on `CursorV1`/`PageInfo`. Until then DESIGN should say which surfaces carry the revision and which cannot.
 - **Folded into the docs:** PRD `fr-tabular-projection`, DESIGN § 3.3 and the drivers table no longer claim the revision travels in `CursorV1`; DESIGN § Read Consistency Contract names the surfaces that do report it and the one that cannot.
 - **How it was checked:** **Verified** through the API: a projection page returns `page_info { next_cursor, prev_cursor, limit }` and no revision anywhere in the envelope, while node read, search, traversal and ingest all carry `(source_epoch, graph_revision)`.
+- **Superseded by D-021.** The observation above is exactly right and the conclusion drawn from it is wrong. `CursorV1` cannot carry the revision and never will from inside a gear — but the revision does not have to travel in the *page* envelope at all. It rides on the *element*, which is this gear's own DTO, so the projection reports its observed revision on every row and there is no read path left that cannot report one. The platform ask this entry filed is withdrawn; see D-021 for what was built instead, and for why the conclusion was written before the envelope table was read.
 
 ## D-006 [doc-gap] `GraphStoreV1::end_read` is missing from the trait
 
@@ -145,11 +177,12 @@ numbers below were corrected in place.)*
 ## D-012 [doc-gap] A producer type cannot be free-form, and its ids change shape
 
 - **Doc:** DESIGN § 3.1 says a producer derives from a family, never from a base directly, and that `family` is required with no default. It does not say what that means for a producer that already writes types.
-- **Implementation:** every consumer type id gains its family prefix — `gts.cf.studio.kg.file.v1~` becomes `gts.cf.core.graph_storage.node.v1~cf.core.graph_storage.owned_node.v1~cf.studio.kg.file.v1~` — and each schema grows an `allOf` `$ref` to its family. The v1 gear accepted free-form types and interned them by name, so this is a breaking change for every existing producer, and it is invisible until registration fails.
+- **Implementation:** every consumer type id gains its family prefix — `gts.cf.studio.kg.file.v1~` becomes `gts.cf.core.graph.node.v1~cf.core.graph.owned_node.v1~cf.studio.kg.file.v1~` — and each schema grows an `allOf` `$ref` to its family. The v1 gear accepted free-form types and interned them by name, so this is a breaking change for every existing producer, and it is invisible until registration fails.
 - **Why:** without a chain there is nothing to validate an instance against, which is the whole point of the base ontology.
 - **Proposal:** DESIGN should carry a short migration note for producers coming from a free-form registry: the id changes, the schema needs `allOf`, and the searchable paths move from a producer-supplied `search_text` to a `full_text_search` trait.
 - **Folded into the docs:** DESIGN § 3.1 carries a migration note: identifier, schema and search text all change at once.
 - **How it was checked:** **Verified** through the API: a free-form type and a type deriving straight from the node base are both refused, each naming what is wrong.
+- **Corrected after checking.** The example above carried a `gts.cf.core.graph_storage.node.v1~cf.core.graph_storage.owned_node.v1~…` prefix, which exists nowhere: the family segment is `cf.core.graph`, not `cf.core.graph_storage`. Checked against the nine schema files the gear publishes (`graph-storage/schemas/`), which are named for the identifiers they declare — the node base is `gts.cf.core.graph.node.v1~` and the owned family `gts.cf.core.graph.node.v1~cf.core.graph.owned_node.v1~`. The shape of the breaking change the entry describes is unaffected; a producer copying the old example would have registered against an ancestor that does not exist.
 
 ## D-013 [doc-gap] The base ontology has no stated publication moment
 
@@ -201,11 +234,13 @@ Both fixed in `05695faa0`.
 ## D-017 [doc-gap] The four vector states are named, not encoded
 `fr-embedding-pipeline` fixes the states a vector may be in after an upsert — embedded and current, absent, preserved, stale — and says similarity search must consider only current ones. It does not say how a store distinguishes them, and the columns DESIGN gives (`embedding`, `embedding_epoch`, `embedding_input_hash`) admit more than one encoding.
 
-**Chosen:** `embedding_input_hash` describes the *stored vector's* input, never the node's current text, which is what lets a later ingest tell a preserved vector from a stale one. `embedding_epoch` carries currency: the active epoch for a current vector, `NULL` for one that is absent or stale. The arm then reads `embedding_epoch = <active>`, so "only current vectors rank" is one equality rather than a rule every query has to remember, and the HNSW index is partial on `embedding_epoch IS NOT NULL` so a stale row does not occupy a slot in the candidate set.
+**Chosen:** `embedding_input_hash` describes the *stored vector's* input, never the node's current text, which is what lets a later ingest tell a preserved vector from a stale one. `embedding_epoch` carries currency: the active epoch for a current vector, `NULL` for one that is absent or stale. The arm then reads `embedding_epoch = <active>`, so "only current vectors rank" is one equality rather than a rule every query has to remember, and the HNSW index is partial on the same distinction, so a stale row does not occupy a slot in the candidate set.
 
 **Why it is worth stating:** the encoding is a store-visible contract. An external `GraphStoreV1` plugin has to arrive at the same distinctions, and the FR alone does not tell it how. The decision itself lives in `domain::embedding::decide_vector`, shared by both implementations, so the two cannot drift — the lesson of the endpoint-constraint entry above.
 
-**Proposal:** DESIGN's `node`/`chunk` table notes should say what `embedding_epoch = NULL` means beside a non-NULL `embedding`, since that is the only state the column names cannot be read off.
+**Proposal:** DESIGN's `node`/`chunk` table notes should say what `embedding_epoch = NULL` means beside a non-NULL `embedding`, since that is the only state the column names cannot be read off. Still open: unlike D-020 through D-023, this one has not been folded in — the two table rows say "staleness detection" and leave the encoding to the reader.
+
+**How it was checked:** by reading the two places that have to agree. `m0003_embedding_space.rs` drops the index `m0001` created and rebuilds it `WHERE deleted_at IS NULL AND embedding IS NOT NULL AND embedding_epoch IS NOT NULL`, and the arm's own predicate is `embedding_epoch = <active>` (`src/infra/store/search.rs:172`) — so the index's partiality and the query's equality express the same distinction, and a stale row is outside both. Worth recording because a verification pass over this register reported the predicate as `deleted_at IS NULL AND embedding IS NOT NULL`: that is `m0001`'s index and `m0003`'s own `down()`, not the migrated state, and on a database that has run every migration the sentence above holds as written.
 
 ## D-018 [doc-gap] `embedding_space` is deployment-wide, and every runtime read is scoped
 DESIGN's `embedding_space` table has `epoch` as its primary key and no tenant column: it is deployment-wide, correctly. But every runtime read in this gear goes through the secure ORM, which needs a scopable entity, and there is no unscoped read API — by design.
@@ -217,7 +252,9 @@ DESIGN's `embedding_space` table has `epoch` as its primary key and no tenant co
 ## D-019 [impl-gap] The gear's default embedding provider carries no semantics
 A deployment that does not configure `graph-storage.embedding_provider = onnx` gets the deterministic fake, and vector search then answers with rankings that mean nothing — reproducible, well-formed, and semantically arbitrary. Boot says so at `warn` level and that is all.
 
-ADR-0005 has no such mode: its three providers are ONNX, remote and "a deterministic fake for CI". Shipping the CI fake as the *runtime default* is this prototype's choice, made so the write path, the epoch bookkeeping and the four vector states could be exercised before a deployment has model artifacts. It is defensible for a prototype and wrong for a release: the failure it produces is a quiet quality loss, which is the exact failure mode ADR-0005 is written to prevent.
+ADR-0004 has no such mode: its three providers are ONNX, remote and "a deterministic fake for CI". Shipping the CI fake as the *runtime default* is this prototype's choice, made so the write path, the epoch bookkeeping and the four vector states could be exercised before a deployment has model artifacts. It is defensible for a prototype and wrong for a release: the failure it produces is a quiet quality loss, which is the exact failure mode ADR-0004 is written to prevent.
+
+*(Renumbered in place: this entry cited ADR-0005 until a verification pass caught it. The embedding-provider decision is `docs/ADR/0004-cpt-cf-graph-storage-adr-embedding-provider.md`; ADR-0005 is SQL/PGQ access, which has nothing to say about providers.)*
 
 **Proposal:** before release, either make `onnx` the compiled-in default with no fallback, or make an unconfigured provider a boot failure. A warning in a log is not a guard.
 
@@ -296,11 +333,17 @@ The nine base schemas lived under `docs/schemas/` and reached the binary through
 
 **Built.** `GraphStoreV1` gains `embedding_state(keys)` — the stored input hash and the epoch the stored vector is current under, index-aligned, unknown and unauthorized keys reading alike as `None`. The domain service reads it before planning and the coordinator embeds only the inputs whose hash or epoch differs, in one provider call; the rest are planned as `skipped`, which the store's `decide_vector` resolves to *preserved* as before. Covered three ways: unit tests on the coordinator with a counting provider, a conformance case (`an_unchanged_re_ingest_embeds_nothing`) run against both stores, and the studio-web stand.
 
-**What the read outside the transaction costs.** A node changed by a concurrent writer between the state read and the write is planned as skipped and lands *stale* (vector kept, not rankable) until the next ingest touches it — the same state `embed: false` produces on purpose. The alternative, embedding inside the transaction, would hold row locks across a provider round trip. Accepted for the prototype; the readiness surface (D-109) should count stale rows when it exists.
+**What the read outside the transaction costs.** A node changed by a concurrent writer between the state read and the write is planned as skipped and lands *stale* (vector kept, not rankable) until the next ingest touches it — the same state `embed: false` produces on purpose. The alternative, embedding inside the transaction, would hold row locks across a provider round trip. Accepted for the prototype. **The readiness surface now exists (D-033), and it still does not answer this.** What it cannot report is a *number*: `ComponentReadiness` carries a component name, a state, the problem, what the state blocks and what is being waited on, and no counters at all, so a deployment can see that the embedding space is healthy and not how many rows are sitting stale under it. That count is the open half of this entry, and it is the one an operator would act on — stale rows are silently missing from the vector arm until something touches them.
 
 ## D-028 [impl-gap] Lexical search cannot find identifiers inside file names
 
-`compose_search_text` joins the declared paths and the store indexes them with PostgreSQL's default text-search configuration, whose parser emits `README.md` and `rust-watch.Dockerfile` as single `file` tokens. On the stand, `Dockerfile` matched and `README` and `rust` did not, although both name files. The searchable text should also carry the punctuation-split tokens of a name (or the store should index a second, `simple`-configuration vector for identifiers). Producer-side, the reference consumer could add a `name_tokens` payload member, but the gap is in the composition every producer inherits.
+`compose_search_text` joins the declared paths and the store indexes them, and a name like `README.md` or `rust-watch.Dockerfile` arrives in the index as one token. On the stand, `Dockerfile` matched and `README` and `rust` did not, although both name files.
+
+**The configuration is not the cause, and the first draft of this entry blamed it.** The store indexes with the `simple` configuration already — one constant, `FTS_CONFIG` in `src/infra/storage/migrations.rs`, shared by the generated `tsvector` column (`to_tsvector('simple', search_text)`, `m0001`) and by every `websearch_to_tsquery` predicate, precisely so the index expression and the query cannot drift (D-010). What produces the single token is the default **parser**, which classifies `README.md` and `rust-watch.Dockerfile` as its `file` and `url` token types *before* any configuration is consulted; a text-search configuration maps token types to dictionaries and cannot make the parser split a token it has already emitted. So the remedy the first draft proposed — "the store should index a second, `simple`-configuration vector for identifiers" — would change nothing at all, and is withdrawn.
+
+What is left is a composition change: the searchable text should also carry the punctuation-split tokens of a name, composed once in `compose_search_text` (`src/infra/store/ingest.rs:75`) so every producer inherits it rather than each remembering a `name_tokens` payload member of its own. The alternative that does work store-side is a second column parsed differently, which is a schema change and a bigger decision than this gap needs.
+
+**How it was checked:** `FTS_CONFIG` read at its single definition and followed to both users; the token-class behaviour is the default parser's, which no configuration in the gear replaces.
 
 ## D-029 [impl] The derivation-chain ceiling is a configured policy, not a fixed three
 
@@ -476,9 +519,11 @@ PRD already requires a re-embedding lifecycle for the larger case (a provider or
 model change blocks the vector arm the same way, § fr-embedding-space and the
 tenant-offboarding and fairness requirements all name re-embedding jobs), none
 of it exists, and a backfill built for migrations alone would be one of three
-inputs to a mechanism nobody has written. an asynchronous migration for a
-type over the row ceiling; and the delegation of the verdict to types-registry
-over the wire. The call site is one function (`domain::evolution`) precisely so
+inputs to a mechanism nobody has written. **The gear has no background task of
+any kind, and three separate needs are queued behind the one that does not
+exist:** a backfill that re-embeds what a migration marked stale; an
+asynchronous migration for a type over the row ceiling; and the delegation of
+the verdict to types-registry over the wire. The call site is one function (`domain::evolution`) precisely so
 that last one can replace it without touching the store or the API.
 
 **Authorization.** Registration stays `admin` on the type resource. A
@@ -662,6 +707,12 @@ probe is an attempted pattern, which says the pattern did not run and not why.
 
 ## D-034 [was a silent cut, now built] Scope replacement removed nothing
 
+*(Written when one function did both halves, under the name
+`fence_and_clear_scope`. The halves have been named apart since: fencing is
+`fence_scope` (`src/infra/store/ingest.rs`) and the removal is
+`src/infra/store/scope.rs::remove_stale`. The old name is kept below where it
+describes what the code did at the time, and nowhere else.)*
+
 `fence_and_clear_scope` wrote the fence row, returned `(0, 0)`, and carried a
 comment saying full declarative replacement was a scope cut — which no entry
 recorded until the acceptance sweep found it (criterion 2, "removes stale
@@ -691,10 +742,16 @@ removal.
 declared `index` path must use, with the value bound — an attribute outside it
 is refused rather than escaped.
 
-**Still open from the same obligation.** Single-writer serialization per scope
-identity has no test: two concurrent replacements of one scope are still never
-made to race. The suite's own header claims it, and the claim is still ahead of
-the evidence.
+**Covered from the same obligation, and covering it found the fence broken.**
+Single-writer serialization per scope identity now has its case:
+`two_replacements_of_one_scope_serialize` (`tests/conformance/mod.rs`, wired
+into both `tests/fake_conformance.rs` and `tests/pg_conformance.rs`) races two
+replacements of one scope on a multi-threaded runtime. It is recorded here not
+because it passes but because of what writing it found — the fence was
+comparing and writing in three steps with no lock between them, so it held
+against a sequential retry and not against the case it exists for. That is
+**D-035**, which carries the defect, the fix and why the fix is the only lock
+a gear can take.
 
 ## D-035 [impl-gap] The scope fence compared and wrote in three steps, with no lock between them
 
@@ -733,43 +790,252 @@ assertion holds whichever reaches the fence first: the higher generation's
 content is what remains, the lower one's node is never there beside it, and the
 recorded generation is the higher.
 
+## D-036 [impl] The fake numbered nodes per tenant, which made a leak test pass vacuously
+
+`FakeGraphStore` allocated internal ids from a counter held **inside each tenant**, so the first node of tenant A and the first node of tenant B both had id 1. The built-in store's ids come from a PostgreSQL sequence and are unique across the whole database.
+
+It never mattered until the adversarial sweep hydrated by a *foreign* internal id -- the one read surface where a missing tenant predicate does not show up as a key collision, because nothing about the request mentions a key. On the fake the foreign id was our own node's id, so the case got a row back, and the row it got back was the right one: the assertion would have passed whatever `hydrate_nodes` did with the tenant.
+
+**Implementation:** the counter moved to the store as an `AtomicI64`. Nothing else changed; ids are opaque to every caller.
+
+**Worth stating generally:** a fake diverging from the real store is expected and fine where the divergence is declared (snapshots, D-007). This one was undeclared and invisible, and it disarmed a test rather than failing one. The conformance suite is the only thing that can catch that class, and only for behaviour it actually exercises.
+
+## D-037 [impl-gap, fixed] A type whose schema cannot compile registered successfully and failed every write
+
+Registration validated the derivation chain from the **identifier** -- which is where the chain lives -- and never compiled the schema body. A `$ref` to something nobody registered therefore passed registration and failed at the first ingest of that type, with `schema does not compile: unresolved schema reference ...`. The producer got a success for the act that was wrong and a failure for every act that was right.
+
+Found by driving registration through the domain service for the first time (`tests/service.rs`).
+
+**Implementation:** both stores now compile the chain validator at registration, immediately after `analyze`, and report a compile failure as a per-item validation error. It is the same validator ingest compiles, so a type that registers is a type that can admit an instance.
+
+**Two things fell out of it.** The base ontology is now always resolvable inside `ChainValidator::compile`, not only when it happens to be on the chain: an analysis edge references the *provenance attribute*, a sibling family that is never an ancestor, so compiling the analysis-edge family type failed while compiling a leaf derived from it succeeded. And the conformance suite's own phantom case carried a misspelled `$ref` (`gts://gts.cf.core.graph.reference_node.v1~`, missing the `node.v1~` segment) which nothing had ever resolved, because nothing had ever compiled it.
+
+**Proposal:** none for the documents -- `fr-type-registration` already asks for a registration that validates. This is the implementation catching up with it.
+
+## D-038 [impl-gap, fixed] Coverage was never measured, and four surfaces had no test at all
+
+`nfr-code-coverage` sets 85 %. `cargo llvm-cov` had never been run against this gear, so the number was unknown and, more to the point, so was *what* was uncovered. The first run said 73.25 % regions / 71.66 % lines, and the shape of the gap was more interesting than the number:
+
+| surface | lines covered before |
+| --- | --- |
+| `domain/service.rs` -- the layer every request goes through | 0 % |
+| `api/rest/{handlers,dto,error}.rs` | 0 % |
+| `domain/local_client.rs` -- the `ClientHub` entrance | 0 % |
+| `domain/admission.rs` -- the Capacity and Admission Contract | 0 % |
+| `infra/store/evolution.rs`, edge branch | 0 % |
+| `infra/store/spaces.rs` -- boot-time embedding-space resolution | 0 % |
+
+The conformance suite calls `GraphStoreV1` directly, which is deliberate and right; the consequence nobody had drawn is that everything *above* the port was unexercised, including the admission bounds that are the gear's half of the capacity contract.
+
+**Implementation:** `tests/service.rs` (the real `GraphServices`, a real `PolicyEnforcer` over a stub PDP, a one-hop engine over the in-memory store), `tests/rest.rs` (real requests through the gear's own axum router), an exhaustive `DomainError` to `CanonicalError` mapping test, a local-client parity case, an edge-type evolution case on both stores, and a boot-resolution case on a real server.
+
+**After: 86.77 % regions, 87.02 % lines, 83.41 % functions.** The remaining uncovered block of any size is `gear.rs` (the composition root, which needs a platform to boot) and the refusal branches of `store/types.rs`.
+
+**What the writing of them found** is recorded separately: [D-037](#d-037-impl-gap-fixed-a-type-whose-schema-cannot-compile-registered-successfully-and-failed-every-write). Worth saying once here: a coverage number is a poor goal and a good instrument. Chasing 85 % is how the fact that no test had ever sent an HTTP request to this gear became visible.
+
+**Found later:** the 85 % this entry chases is not the number CI fails on. `tools/scripts/coverage.py` gates at a project-wide 80 with no override for this gear, so the gear is over both thresholds and the stricter one is currently kept by hand — D-048.
+
+## D-039 [impl-gap] The ingest producer principal never reaches the store, so two rules are narrower than they read
+
+- **Doc:** PRD `fr-bulk-ingest` — "every ingest request carries a **tenant- and producer-scoped** idempotency key"; PRD `fr-scope-replace` — "a scope **MUST** have a canonical identity (tenant, **owning producer**, scope attribute and value)"; DESIGN § Concurrent Ingest Protocol rule 3, which spells the same identity out and hangs the replacement lock on it.
+- **Implementation:** `src/infra/store/ingest.rs:284` — `let producer = String::new();`. That empty string is then the value written into `ingest_idempotency.producer` (`ingest.rs:409`), the value filtered on when a receipt is replayed (`ingest.rs:1514`), and the value written into and compared against `scope_registry.owner_producer` (`ingest.rs:463`, `ingest.rs:511`).
+- **Why it matters, in two different ways.** The idempotency key becomes **tenant-scoped**: two producers in one tenant that happen to choose the same key collide, and the second one either replays the first's response or is refused as a hash mismatch, for a request it never sent. And the fence's ownership check at `ingest.rs:511` — `if row.owner_producer != producer` — compares `""` with `""` on every path, so it can never fire: **any writer in the tenant can replace any scope**, including one another producer claimed and is re-syncing. The fencing that D-034 and D-035 made real is generation fencing; the *ownership* half of the same identity is vacuous. That is a p1 authorization gap, not a diagnostics one, and it is the same shape as D-032: a column parsed, stored, compared against itself, and read by nothing that could tell.
+- **The principal was available the whole time.** `Subject::principal()` is what the same file already calls twelve lines away, at `ingest.rs:814` and `ingest.rs:837`, to write `node.owner_principal` for the source-namespace boundary. Nothing was missing from the port; the value was simply never threaded into the two places that needed it.
+- **Proposal:** carry `ctx.subject.principal()` as the producer into the receipt and the fence, and decide explicitly what a namespace transfer means for a scope the previous owner still holds — the source-namespace registry already answers the equivalent question for nodes (D-032), and the two ownership notions should not be allowed to drift apart. **Being fixed separately**; recorded here because the gap predates the fix and because the way it survived — a boundary implemented against a constant — is the part worth remembering.
+- **How it was checked:** read at the assignment and followed to all four uses; `grep` for `principal()` shows it reaching the node columns and nothing else. No test could have caught it: every conformance case ingests as one subject, so `"" == ""` and the real comparison are indistinguishable from the outside.
+
+## D-040 [impl-gap] Writes are one statement per row, where the PRD requires batched statements
+
+- **Doc:** PRD `fr-bulk-ingest`: "Writes **MUST** use batched database statements", with the rationale naming the reason — "the prototype's row-at-a-time writes were a measured bottleneck". DESIGN § 2 repeats it in the component table ("writes nodes/edges/chunks with batched statements in one transaction").
+- **Implementation:** row at a time. `write_nodes` (`src/infra/store/ingest.rs:1295`) loops the batch and calls `upsert_node` (`ingest.rs:772`) per node; `write_edges` (`ingest.rs:1419`) loops and calls `upsert_edge` (`ingest.rs:1026`) per edge, after resolving each endpoint and reading the endpoint types for the constraint check. Each of those is a `SELECT` followed by an `INSERT` or an `UPDATE`, so a 20 000-edge batch is tens of thousands of round trips inside one transaction. Atomicity — the other half of the requirement — does hold: it is all one transaction.
+- **Why it matters:** the perf lane measures it. 10 000 nodes + 20 000 edges lands in 19.7 s against a 60 s budget, so nothing published is at risk today, but seeding the 600 000-row reference graph took 810 s and was markedly non-linear — roughly a thousand edges a second at the start and under a hundred a second around the 450 000 mark (`dev/PERF-6.1.md`). A producer re-syncing a repository into an already-large graph is on the slow part of that curve, and the requirement exists precisely because v1 was there before.
+- **Proposal:** batch the reads first — one `SELECT` resolving every key of the batch, which is where most of the round trips are — then multi-row `INSERT … ON CONFLICT DO UPDATE` for the writes. The per-row decisions that stand in the way are the tombstone conflict, the type-immutability check and the endpoint-constraint check; each of them can be decided from the batched read rather than from a read of its own. Worth doing before anyone promises a bulk-import SLA, and worth measuring rather than assuming, since the non-linearity above has not been attributed yet.
+- **How it was checked:** read both write loops and the two upserts they call; the shape is confirmed by the seeding curve in the perf note, which is what a per-row statement count against a growing index looks like.
+
+## D-041 [impl-gap] `nfr-response-bound` has no configuration key and nothing truncates before hydration
+
+- **Doc:** PRD `nfr-response-bound` (p1): "Every response **MUST** be bounded in aggregate, not only per item: cumulative hydrated payload bytes, returned edge count, snippet/chunk-provenance/annotation bytes, and total serialized bytes each have a **configured ceiling enforced in the domain layer before hydration**, with deterministic truncation … and explicit truncation metadata in the response. REST and the in-process client are bound by the same values." Its rationale is explicit that per-item ceilings do not compose.
+- **Implementation:** the per-*item* and per-*cardinality* bounds exist and are enforced in `src/domain/admission.rs` — `ingest_max_nodes`, `ingest_max_edges`, `payload_max_bytes`, `item_max_bytes`, `node_read_max_adjacency`, the four traversal bounds, `search_max_arm_limit`, `projection_max_page` (`src/config.rs:87-97`). **No aggregate byte ceiling exists at all**: there is no key for cumulative hydrated bytes, no key for total serialized bytes, nothing sums either, and nothing truncates between admission and hydration. What bounds a response in practice is cardinality — page size, node budget, arm limit — multiplied by whatever `payload_max_bytes` allows per row, which is exactly the composition the requirement says is not a bound.
+- **Why it matters:** the worst case is a page of admissible rows whose payloads are each under the per-item ceiling. At `projection_max_page` rows of `payload_max_bytes` each the arithmetic is megabytes, discovered while serializing — the failure mode the rationale names — and a traversal hydrating its whole node budget has the same shape. It is a denial-of-service surface reachable with entirely valid requests, and it is also why `TruncationReason` has no aggregate-bytes variant: nothing can report a truncation that never happens.
+- **Proposal:** two keys (cumulative hydrated bytes, total serialized bytes) enforced in the domain layer at the point where the candidate set is known and before hydration, truncating at the ordering the query already established and reporting it as a truncation reason — which means a new `TruncationReason` variant and a field on the projection and search responses, since only traversal carries one today. The `p1` marking means this is release-blocking rather than a prototype gap; nothing about it needs platform work.
+- **How it was checked:** every key in `src/config.rs` read against the requirement's list; `src/domain/admission.rs` read for a byte accumulator (there is none); the hydration paths in `domain/service.rs` read for a pre-hydration cut (there is none).
+
+## D-042 [impl-gap] The neighborhood projection has no degree ordering
+
+- **Doc:** PRD `fr-neighborhood-projection` (p1): return the connected subgraph within a node budget, "**ordering retained nodes by degree so truncation keeps the structural core**". DESIGN § Authorization Model restates it from the other side — "degree ordering, budgets, and truncation are computed on authorized rows only" — so the ordering is assumed by the security contract as well as by the feature.
+- **Implementation:** `GraphServices::neighborhood` (`src/domain/service.rs:837`) admits the request, builds a `WalkPlan`, makes a one-element seed list from the root and hands it to the same `walk_and_hydrate` the traversal uses. `domain::traversal::walk` is breadth-first and its truncation is **arrival order**: when `ordered.len()` reaches `max_nodes` it sets `TruncationReason::NodeBudget` and stops (`src/domain/traversal.rs:91-97`). No degree is computed anywhere in the gear — `grep -rn degree src/` returns nothing.
+- **Why it matters:** on a dense graph the difference is the whole feature. A depth-3 neighborhood of a hub node truncated by arrival order keeps whichever leaves the first hop happened to return and drops the structurally central nodes that make the picture readable; the criterion's phrase "keeps the structural core" is the requirement, not a decoration. It is a silently-wrong-answer gap rather than a failure: the response is well-formed, bounded, correctly scoped, and reports that it truncated — it just keeps the wrong nodes, and no caller can tell.
+- **Proposal:** compute degree over authorized rows (the engine already reads the incident edges it would need) and order the retained set by it before the budget cuts, with the root exempt as seeds are. Cheap while the frontier is bounded by `traversal_max_frontier`; the ordering has to happen after scoping, per the Authorization Model, so it belongs in the domain walk rather than in the engine.
+- **How it was checked:** the walk read end to end for an ordering step; `grep` for `degree` across the gear finds no producer and no consumer.
+
+## D-043 [impl-gap] Traversal takes seed keys only, reports no seeds, and bounds them before it authorizes them
+
+- **Doc:** PRD `fr-graph-traversal` (p1) is unusually specific: seeds are "given as explicit node keys, **as hybrid-search hits for a query, or both**"; responses "**MUST** include the traversed nodes, edges, **seeds**, and truncation status"; and, because seeds survive truncation, "**after authorization and deduplication**, a request whose distinct authorized seeds exceed the effective node budget **MUST** be rejected … and seed ordering and **admitted-seed metadata MUST** be deterministic."
+- **Implementation:** three divergences, in one path.
+  - *Seeds are keys only.* `TraverseRequest.seeds: Vec<NodeKey>` (`graph-storage-sdk/src/models.rs`), and there is no field for a query. A caller wanting "search then expand" — the scenario the PRD's rationale says motivated the gear — makes two calls and joins them, which is exactly the flow the criterion's own § 6.1 scenario 1 describes as one.
+  - *The response carries no seed list and no admitted-seed count.* `TraversalResponse` is `nodes`, `edges`, `truncated`, `revision`. The seeds are in `nodes` (they are walked first, and the walk sorts and dedups them, so the order is deterministic) but they are not distinguishable from anything else the walk reached, and nothing reports how many were admitted.
+  - *The bound is applied to the wrong set.* `admission::admit_traverse` refuses when `request.seeds.len() > max_nodes` (`src/domain/admission.rs:107-111`) — the **raw** submitted count, before the dedup the walk performs and before authorization drops the seeds this caller cannot see. So a request with 600 seeds against a 500-node budget is refused even when it names 200 distinct authorized nodes, and the requirement's wording ("distinct authorized seeds") is not what is measured.
+- **Why it matters:** the third one refuses requests the specification admits, which a producer experiences as an arbitrary limit; the second leaves a caller unable to tell a seed from a reached node, which matters precisely because seeds are budget-exempt; the first is a missing feature with a documented use case. None of them returns a wrong answer, which is why they survived — the paths that *are* built are correct.
+- **Proposal:** resolve and authorize the seed set first, dedup it, bound the result, and report `seeds` and an admitted-seed count on the response. Search-derived seeds are a larger change (a search request nested in a traversal request, and one snapshot across both) and are the natural home for the search-then-expand scenario; they should be scoped deliberately rather than added to the DTO.
+- **How it was checked:** the DTOs read in the SDK, the admission check read at its line, and the walk read for the ordering guarantee (which does hold).
+
+## D-044 [impl-gap] The edge-scan budget is per hop, and a hop that reaches it truncates silently
+
+- **Doc:** DESIGN's traversal section makes the scan budget part of a *walk's* bound, alongside depth and the node budget, and `TruncationReason` is documented in the SDK as "why an expansion or traversal stopped early. **Never silent.**"
+- **Implementation:** `domain::traversal::walk` passes the same `plan.max_edges_scanned` into every hop's `HopBudget` (`src/domain/traversal.rs:73`), so a depth-3 walk may scan three times the configured budget; nothing accumulates across hops. And in the engine the budget is applied as `.limit(req.budget.max_edges_scanned)` on the incidence read (`src/infra/engine.rs:439`), after which the only truncation the hop can report is the frontier cap (`engine.rs:370`, `engine.rs:524`, both computed from the reached-node count). A hop that reads exactly `max_edges_scanned` rows is indistinguishable from one that read every edge there was: `TruncationReason::EdgeScanCap` exists in the enum and has exactly one occurrence in the gear — the REST serializer's match arm (`src/api/rest/dto.rs:894`) — and no producer anywhere.
+- **Why it matters:** this is the silent-wrong-answer case in the traversal path. A dense hub whose incident edges exceed the budget returns a subgraph that is arbitrarily cut at whatever order the index happened to return, reported as complete, and a caller counting or drawing it is wrong in the way D-014 describes for double-counted edges — only without the double-count to notice. The cumulative question is smaller but real: `traversal_max_edges_scanned` is documented as the walk's protection against a runaway traversal, and at depth 3 it protects three times as much work as its value says.
+- **Proposal:** carry the remaining budget through the walk and decrement it per hop, and have the engine report `EdgeScanCap` when the incidence read returns its limit — `limit + 1` and a comparison, the same device the frontier cap already uses in `engine.rs:336`. Both halves are local to the two files.
+- **How it was checked:** the budget followed from `WalkPlan` through every `ExpandRequest`; `grep` for `EdgeScanCap` across `src/` and `tests/` finds only the serializer arm, so nothing can ever emit it.
+
+## D-045 [impl-gap] A search hit carries no element envelope
+
+- **Doc:** PRD `fr-audit-envelope` (p1): the gear-assigned envelope is on "**every element read**", and DESIGN § API element envelope defines it as a property of any node or edge a read surface returns. D-022 closed the edge half of exactly this requirement on exactly this reasoning.
+- **Implementation:** `SearchHit` is `node_key`, `type_id`, `name`, `score`, `arms` and `snippet` (`graph-storage-sdk/src/models.rs:906`). No envelope, no revision on the element — the revision is on `SearchResponse` instead, which is the one place search does report it. So a caller who searches and wants to know when a hit was last written, or by whom, has to read each hit back individually.
+- **Why it matters:** whether it is a divergence depends on whether a hit is "an element", and the honest answer is that it is a ranked *reference* to one — which is the same argument that was made for `EdgeRef` and `AdjacencyEntry` in D-022, and it was the right call there. The reason to record it anyway is D-022's own lesson: the requirement says every node any read surface returns, a hit carries a payload-free identity today, and the moment a hit grows a payload or a hydrated field the distinction stops being defensible and nothing tests the boundary. Recording it also makes the decision visible rather than incidental.
+- **Proposal:** decide it explicitly in DESIGN — either a hit is a reference and the envelope belongs on the hydration that follows (in which case say so beside the envelope contract, as D-024's repetition needs saying), or hits carry the envelope like projection rows do (D-021), which costs one join and makes "every read surface" true without an asterisk.
+- **How it was checked:** the DTO read in the SDK and the REST serializer read beside it; no envelope reaches a hit on either path.
+
+## D-046 [impl-gap] Type-family filtering has no test, and the authorizing permission's pattern is not intersected with the caller's
+
+- **Doc:** DESIGN § Authorization Model, "GTS pattern resolution is shared, and never text matching": *"Two pattern filters meet over the same type column on one request: the caller's type-family filter and the `resource_type` of the permission that authorized them, which may itself be a GTS wildcard pattern. Both resolve through `GtsIdPattern` … and the request's effective type set is **the intersection of the two sets**."*
+- **Implementation:** half of it. The caller's half works and is real — `search` resolves `request.type_patterns` through the shared resolver (`src/infra/store/search.rs:39-42`), and traversal resolves `edge_type_patterns` and `node_type_patterns` the same way (`src/domain/service.rs:818-822`). The permission's half does not exist: `domain::authz::scope_for` asks the PEP for an `AccessScope` and returns it (`src/domain/authz.rs`), and an `AccessScope` is a row predicate — it carries no type pattern the gear could resolve and intersect. So a permission granted over a GTS wildcard authorizes the caller for the resource and then constrains nothing about *which types* they may read, and the effective type set is the caller's filter alone.
+- **And it is untested on both halves.** Every call site in every suite passes an empty pattern list: `type_patterns: Vec::new()` and `edge_type_patterns`/`node_type_patterns: Vec::new()` at all fourteen occurrences across `tests/service.rs`, `tests/conformance/mod.rs`, `tests/rest.rs` and `tests/perf.rs`. Nothing has ever asked this gear to filter by type family — not the pattern resolution, not the implicit derived-type coverage a bare base identifier carries, not the refusal of an unresolvable pattern. That is the one entirely untested feature surface left in the read paths.
+- **Why it matters:** the untested half is a correctness risk on a feature the § 6.1 scenarios all use (each names a type filter). The unimplemented half is an authorization risk of the D-039 shape: the document describes a narrowing that does not happen, so a reader — or an administrator granting a deliberately narrow pattern permission — believes the type set is constrained when only the row set is.
+- **Proposal:** conformance cases on both stores for a pattern that selects a family, a pattern that selects a leaf, a bare base identifier (which must cover its descendants), and an unresolvable pattern; and then either implement the intersection — which needs the PEP to hand back the authorizing permission's `resource_type`, a platform ask — or amend DESIGN to say the type set is the caller's alone and that a narrow pattern permission does not restrict types. The first is the better shape; the second must happen if the first cannot, because the paragraph as written is not true of the code.
+- **How it was checked:** `grep -rn type_patterns src/ tests/` — every test occurrence is an empty vector; `authz.rs` read end to end for a pattern the enforcer returns (it returns only the scope).
+
+## D-047 [impl-gap] `idempotency_retention_days` is a key nothing reads
+
+- **Doc:** DESIGN § Concurrent Ingest Protocol rule 2: "Idempotency records are retained for a configurable window (`limits.idempotency_retention`, default 7 days)", and DESIGN's configuration table gives the key, the default, the range, and its enforcement point — "Background cleanup".
+- **Implementation:** `idempotency_retention_days` is declared (`src/config.rs:101`), defaulted to 7 (`config.rs:167`) and range-checked 1..=365 (`config.rs:239`). Those are its only three occurrences in the gear: nothing reads the value, and there is no cleanup of any kind — the gear has no background task at all (D-031). What actually expires a receipt is the source epoch: `replay_receipt` treats a receipt whose `source_epoch` is not the current one exactly as expired (`src/infra/store/ingest.rs:1528`), and the epoch changes only by operator action, which is itself unimplemented (D-050).
+- **Why it matters:** `ingest_idempotency` grows without bound — one row per ingest request per producer per tenant, each holding a canonical request hash and a serialized response. The correctness of a replay is unaffected, and the configured range says 1 to 365 days to an operator who can set it to any value with no effect whatsoever, which is worse than the key not existing. It also means a key is reusable *never* rather than after a week, so a producer that recycles keys across long-running pipelines gets a hash-mismatch conflict instead of a fresh request.
+- **Proposal:** the cleanup is a background task, so it waits on the same absent mechanism as the re-embedding backfill and the asynchronous migration (D-031) — which is the argument for building one rather than three. Until then the key should be documented as unenforced rather than offered with a range, and the retention story should say plainly that receipts live until the epoch rotates.
+- **How it was checked:** `grep -rn idempotency_retention src/` returns the declaration, the default and the range check, and nothing else; the epoch comparison read at its line.
+
+## D-048 [doc-gap] `nfr-code-coverage` says 85 % enforced in CI, and CI enforces 80 %
+
+- **Doc:** PRD `nfr-code-coverage` (p1): "The gear **MUST** maintain at least 85% line coverage across its library crates", and PRD § 5's testing-strategy note calls it "the enforced floor … gated in CI".
+- **Implementation:** `tools/scripts/coverage.py` carries `COVERAGE_THRESHOLD = 80` as a module constant (line 35) and threads it through every report and gate; it takes a `--threshold` argument but has no per-gear configuration and no override for this gear. So the number CI fails on here is 80, and the gear's own 85 is a figure in a document. The gear is comfortably over both — 87.02 % lines as of D-038 — which is exactly why nobody noticed.
+- **Why it matters:** a coverage number that is *stated* as gated and is not is worse than one stated as a goal: a regression from 87 % to 82 % would pass CI green while breaching a p1 requirement, and the layers that fell to 0 % before D-038 (the whole REST surface, the admission bounds) are the ones a refactor would drop again first. It is also the second instance of this register's recurring pattern — a rule the documents state and nothing enforces — and the cheapest one to close.
+- **Proposal:** either give the coverage tool a per-gear floor and set this gear's to 85, or amend `nfr-code-coverage` to the threshold the platform actually gates (80) and record 85 as this gear's own bar with the entry that measures it. The first is right if the requirement is meant; the second is honest if it is not. What must not stand is the current pair, because it reads as enforced.
+- **How it was checked:** `tools/scripts/coverage.py` read at the constant and at its call sites; no gear-specific threshold appears anywhere in the repository's coverage configuration.
+
+## D-049 [impl-gap] Deleting a tombstoned row is a 404, and re-ingesting a tombstoned *edge* revives it
+
+- **Doc:** DESIGN § Soft Delete Contract, rules 3 and 4. Rule 3: "The revision moves if and only if state changed. A delete increments the tenant's graph revision; **deleting an already-deleted row is a no-op that leaves it untouched**, exactly as a converging ingest replay does." Rule 4: "A tombstoned `node_key` is not reusable before purge. **Re-ingesting it is a conflict, not a resurrection**" — stated of `node_key`, and the reasoning given ("consumers still hold that key") is not node-specific.
+- **Implementation:** two divergences, in opposite directions.
+  - *A second delete is `NotFound`.* `soft_delete` looks the row up with `DeletedAt.is_null()` in the filter and maps the miss to `GraphStoreError::NotFound` (`src/infra/store/ingest.rs:1141` and `:1145` for a node, `:1207` and `:1211` for an edge), which surfaces as `404`. The fake does the same (`src/infra/fake_store.rs:776`, `fake_store.rs:794`). The contract describes a no-op — the revision correctly does not move, but the caller is told the row does not exist, which is also what they would be told if it never had.
+  - *A tombstoned edge comes back.* `upsert_node` refuses a tombstoned key explicitly and by name (`ingest.rs:860-866`: "node key … is tombstoned and cannot be re-ingested before purge"). `upsert_edge` has no such branch: it treats a tombstoned row as merely changed — `if current.payload == payload && current.deleted_at.is_none()` is the unchanged test (`ingest.rs:1080`) — and the update it then runs clears `deleted_at`, `deleted_by_subject_id` and `deleted_by_subject_type` (`ingest.rs:1097-1108`). So re-asserting a deleted relationship silently resurrects it, with the tombstone's audit trail erased rather than superseded.
+- **Why it matters:** the revive is the serious half. An edge is derived — its key is a hash of type, endpoints and discriminator — so a producer re-syncing a source it has not changed re-asserts every edge it ever asserted, and an edge an operator or an analysis deliberately deleted comes back on the next sync with nothing recording that it did. Deletion of an edge is therefore not durable against the ordinary write path, which is not what "tombstone, not a row removal" promises. The 404 is milder but breaks an idempotency property the contract states deliberately: a delete retried after an unknown outcome should converge, and instead it reports a failure.
+- **Proposal:** make a second delete a no-op that reports the row's existing tombstone (the revision already stays put), and decide the edge revive explicitly rather than by omission — either refuse it as `upsert_node` does, or define a re-assertion as a deliberate undelete that records the reviving subject and says so in the contract. Silence is the one option the Soft Delete Contract does not leave open, since it is the half of the contract consumers rely on.
+- **How it was checked:** all four paths read in both implementations; the asymmetry between `upsert_node`'s explicit refusal and `upsert_edge`'s missing branch is visible in the same file, twenty lines apart. Not covered by any test: `tombstoned_rows_are_absent_from_every_read_path` asserts the read side, and no case deletes twice or re-ingests a deleted edge.
+
+## D-050 [impl-gap] There is no epoch-rotation mechanism, so half of `fr-snapshot-identity` has no trigger
+
+- **Doc:** PRD `fr-snapshot-identity` (p1): `(source_epoch, graph_revision)` is the snapshot identity in continuation tokens, cache keys, job identity and plugin cursors, and the epoch is "**rotated by operator action before ready after restore**". `graph_meta`'s own docstring restates it: "rotated by operator action after a restore or store replacement" (`src/infra/storage/entity/graph_meta.rs:6`).
+- **Implementation:** the epoch is read everywhere and written once. `graph_meta` is seeded with `source_epoch = 1` at first boot (`src/infra/store/ingest.rs:1256`); the only other occurrences of the key are reads — the revision read (`src/infra/store/reads.rs:101`) and the ingest path's own lookup (`ingest.rs:231`). There is no REST route, no administrative operation, no configuration key and no boot path that changes it. `grep -rni rotat src/` finds two comments describing the rotation and no code performing it.
+- **Why it matters:** an epoch that never moves makes the *whole* of the snapshot identity a revision counter, and the thing the epoch exists to invalidate is a restore. Restore a database from a backup and the revision counter goes backwards while continuation tokens, cache keys and plugin cursors minted against the old timeline still parse and still look current — which is precisely the confusion the pair was designed to prevent. What the epoch does work for is the one consumer that reads it as a condition rather than as an identity: an idempotency receipt from another epoch is treated as expired (D-047), so *if* an operator could rotate it, receipts would correctly stop replaying. They cannot, so that safety is latent.
+- **Proposal:** one administrative operation under ontology administration that increments the epoch and refuses while requests are in flight, plus the readiness interlock the requirement names — readiness withheld until the operator has rotated after a restore, which needs a durable marker that a restore happened. The operation is small; the interlock is the part that needs designing, and it belongs with the tenant-reconciliation row of the readiness matrix that is already reported `not_implemented` (D-106).
+- **How it was checked:** every occurrence of `KEY_SOURCE_EPOCH` read (one write at first boot, two reads); no route, config key or service method touches it.
+
+## D-051 [doc-gap] The base ontology is published to one registry, not two — and D-013 over-claimed it
+
+- **Doc:** DESIGN § Base Ontology Publication, first paragraph: "**At startup** the gear registers the base ontology defined in § 3.1 … and its permission instances **with the platform types-registry through the standard inventory mechanism**, so producers can derive types and administrators can grant permissions before any runtime registration happens." Its "Found while building the prototype" note then says publication "happens **twice, in two registries**, at two moments" — the platform registry at startup, the gear's own per-tenant projection at a tenant's first registration.
+- **Implementation:** the second moment exists and the first does not. `with_base_ontology` prepends whichever base schemas a tenant is missing to that tenant's first registration batch, exactly as described. There is no types-registry client in the gear: `grep -rni 'inventory|types_registry|register_gts' src/` finds no client, no inventory declaration and no startup publication, and `GraphStorageGear::init` (`src/gear.rs:40`) resolves configuration, the embedding provider and the embedding space, and registers migrations and REST routes — nothing else. `gts_type`'s docstring already calls the table "a per-tenant projection of the platform types-registry", and the projection has no source.
+- **Why it matters:** the paragraph's purpose is the sentence at the end of it — "so producers can derive types and administrators can grant permissions **before** any runtime registration happens". Neither is possible. A producer cannot browse the base ontology to see what to derive from, and an administrator cannot grant a permission over a type the registry has never heard of; the schemas exist only inside the gear's crate (D-026) and inside each tenant's own projection after that tenant has already registered something. It is also the reason the readiness matrix reports the types registry `not_implemented` rather than healthy (D-033), and the reason the evolution verdict cannot yet be delegated to it (D-031).
+- **And it corrects D-013.** That entry's "folded into the docs" line reads: "DESIGN § Base Ontology Publication now says publication happens twice, in two registries, and the gear's own copy is per tenant on first registration." The second half is true and the first half is a description of an intended design, not of this build — publication happens **once**, in the gear's own per-tenant table. D-013's larger finding underneath it (that publication is also the only moment, because a base schema edit can never reach a database that has already published it) is unaffected and stands.
+- **Proposal:** either build the startup publication — which needs the platform inventory mechanism and is the thing the readiness row is waiting for — or mark the paragraph as describing the target state and say which half this iteration ships, in the amendment style the rest of the document uses. The second is honest now; the first has to happen before the permission story or the delegated verdict can work.
+- **How it was checked:** the gear's `init` read end to end; `grep` for an inventory or registry client across `src/` and `Cargo.toml` finds nothing; the nine schemas traced from `graph-storage/schemas/` to the per-tenant prepend and no further.
+
+## D-052 [impl-gap] The deadline is minted per store call, and no store read consults it
+
+- **Doc:** DESIGN § Deadlines and Cancellation makes the budget a property of the *request*: a deadline is taken once, carried through every stage, and consulted by work that can outlive it. `deadline_interactive_secs` is the interactive ceiling (`src/config.rs:99`).
+- **Implementation:** `GraphServices::store_ctx` constructs `budget: RemainingBudget::starting_now(self.config.deadline_interactive())` and a fresh `CancellationToken::new()` on every call (`src/domain/service.rs:94`), and it is called sixteen times across the service. A request that makes several store calls — a compound read that opens a snapshot, reads, hydrates and closes; an ingest that reads embedding state and then writes — therefore gets a **new full budget per call** and an unrelated cancellation token each time, so the clock restarts rather than running down and the token cancels nothing that is actually in flight.
+  It matters less than it would, because almost nothing consults either. The only store path that reads `budget` is the type-evolution re-validation scan (`src/infra/store/evolution.rs:48`, checked between batches, which D-031 records as "the first store path in this gear to consult `StoreCtx::budget`"), and the only other consumers are the embedding providers, which pass it into their own calls (`src/domain/embedding.rs:111-220`). **No store read path consults `budget` or `cancel` at all** — not search, not the projection, not a hop, not hydration.
+- **Why it matters:** the bounds that do exist are cardinality bounds, and they bound *work*, not *waiting*. A slow database under load makes every read outlive its deadline with nothing noticing, and the request is killed from outside instead: by the gear's own deadline never, and by `api-gateway`'s 30 s `SYNC_TIMEOUT` eventually, which is the constant D-031 already records as the real ceiling. The per-call minting is the more insidious half, because it makes the budget look carried when it is not — a reader of `store_ctx` would reasonably believe a request has one clock.
+- **Proposal:** mint the budget and the cancellation token once per request, at the point the security context is resolved, and thread them into every `StoreCtx` the request builds; then have the read paths consult them where they can act — before hydration, between search arms, and between hops, which is where a walk can decide to answer `Deadline` rather than start another round trip. The evolution scan already shows the shape.
+- **How it was checked:** `store_ctx` read at its definition and counted at its call sites; `grep` for `budget` and `cancel` across `src/infra/store*` and `src/infra/engine.rs` finds the evolution scan and the traversal *cardinality* budget (`max_frontier`, `max_edges_scanned`), which is a different thing wearing the same word.
+
+---
+
 # Acceptance criteria: what the prototype actually establishes
 
 PRD § 9 is the checklist this gear will be judged against, and nothing here
 recorded where the prototype stands against it. Checked one by one, on the
-live stand and in the suites. Nothing below is a divergence from the
-specification — it is the distance still to cover, written down so it is not
+live stand and in the suites, and **re-checked 2026-09-11** after the
+landings that followed: every criterion below now names the case or the entry
+that settles it, and says where it is met only at the store port. Nothing
+below is a divergence from the specification — it is either evidence that a
+criterion holds or the distance still to cover, written down so neither is
 rediscovered.
 
 **1. Register an ontology, ingest owned nodes, reference nodes and both edge
-families, re-run identically for byte-identical state — *partly*.** The
-registration and the convergence halves hold and are covered end to end: an
+families, re-run identically for byte-identical state — *met at the store
+port*.** The registration and convergence halves held from the start: an
 identical batch re-run reports every row unchanged and leaves the revision
-where it was. But only **owned nodes and static edges** were ever ingested.
-Reference nodes (with their `(system, kind, native_id)` key derivation) and
-analysis edges (with their required `provenance`) have validation code and no
-exercise, in the suites or on the stand.
+where it was. The half this entry recorded as missing — reference nodes with
+their `(system, kind, native_id)` key derivation, and analysis edges with
+their required `provenance`, validated by code nothing exercised — is now
+exercised: `both_node_families_and_both_edge_families_round_trip`
+(`tests/conformance/mod.rs`, run against both stores) ingests one batch
+carrying every family, reads each node back, and reads every edge of the batch
+back through `GET /edges/{edge_key}`'s store operation, which is also what
+pins the two surfaces' agreement on how an edge is named (D-022). *At the
+store port*: the case drives `GraphStoreV1`, not REST, so what is established
+is that the four families round-trip through the store and not that a producer
+posting them over HTTP sees the same thing.
 
 **2. Scope replacement removes stale static content and preserves analysis
-edges — *no*.** Generation fencing works and is covered: an older generation
-is refused, an equal one with different content conflicts. The **replacement
-itself does nothing** — `fence_and_clear_scope` writes the fence row and
-returns `(0, 0)`, removing no stale content, so the half of the criterion
-about preserving analysis edges across a re-sync has nothing to preserve them
-*from*. This was a deliberate cut, and it had not been written down anywhere
-until this sweep.
+edges — *met at the store port*, and building it found a second
+defect.** When this section was first written the replacement did nothing:
+the one function then called `fence_and_clear_scope` wrote the fence row and
+returned `(0, 0)`, so the half of the criterion about preserving analysis
+edges had nothing to preserve them from — a deliberate cut that no entry had
+recorded. Both halves are built now. Fencing is `fence_scope`
+(`src/infra/store/ingest.rs`) and removal is
+`src/infra/store/scope.rs::remove_stale`, which runs after the batch's own
+writes and inside the same transaction, under the fence row's lock, removing
+only scope-managed static content the batch did not re-supply and only nodes
+nothing still references — so a node an analysis edge points at stays
+(**D-034**). Writing the race the criterion's serialization clause implies
+then found the fence itself broken, which is **D-035**:
+`two_replacements_of_one_scope_serialize` now holds it on both stores. What is
+still not covered is the *bounds* — neither row ceiling exists in the fake
+store, so the conformance suite covers the grounds on both implementations and
+the bounds on neither.
 
-**3. Four retrieval scenarios within the § 6.1 latency thresholds — *two and
-a half of four, none timed*.** Hybrid narrowing, bounded traversal with
-filtering and the depth-3 neighborhood answer. Hybrid narrowing answers with
-*meaning* only since the gear started computing its own vectors (D-103): while
-they arrived from the producer, the vector arm ranked whatever it was handed
-against whatever it was handed, and nothing tied the two to one model. The criteria table answers its
-*alternative* flow (a filter on an unindexed attribute is refused, naming the
-alternatives) but not its main flow, which is filtering by payload attributes
-— see D-104. And **no scenario was timed against § 6.1 at all**: the stand
-carries five nodes, not the seeded reference graph the criterion names, so the
-thresholds are untested rather than met.
+**3. Four retrieval scenarios within the § 6.1 latency thresholds — *met on
+developer hardware, not on the reference profile*.** All four answer, and all
+four are now timed. Hybrid narrowing answers with *meaning* only since the
+gear started computing its own vectors (D-103): while they arrived from the
+producer, the vector arm ranked whatever it was handed against whatever it was
+handed, and nothing tied the two to one model. The criteria table's main flow
+— filtering and ordering by payload attributes — is built too (D-030), so it
+no longer answers only its alternative flow.
+
+The timing is an opt-in lane, `tests/perf.rs` behind `GEARS_GRAPH_PERF`
+(`GEARS_GRAPH_PERF_SCALE` runs a smaller graph and then asserts no threshold,
+because a latency measured on a tenth of the graph is not evidence about the
+graph). Run 2026-09-11, release build, PostgreSQL 19 + pgvector, on the graph
+the criteria name — 100 000 nodes, 500 000 edges, every node embedded:
+
+| scenario | measured p95 | budget |
+| --- | --- | --- |
+| hybrid narrowing, arm limit 50 (query embedding excluded, per `nfr-search-latency`) | 41.2 ms | 500 ms |
+| criteria table, filter on a declared payload path, page 50 | 4.2 ms | — |
+| bounded traversal, depth 3, edge-type filtered, 8 seeds | 511 ms | 1 s |
+| depth-3 UI neighborhood, 1 000-node budget, hydrated | 396 ms | 1 s |
+| ingest 10 000 nodes + 20 000 edges (embedding excluded) | 19.7 s total | 60 s |
+
+Quoted from [`dev/PERF-6.1.md`](./PERF-6.1.md) rather than re-measured; that
+note carries the full run and its caveats. Two of them bear on whether this
+criterion is *met* or merely *not failed*: the numbers come from a developer
+machine under WSL2 with the database in a container beside the test process,
+not the reference deployment configuration the criterion names, so they are a
+floor on headroom rather than a certified result; and the stored vectors are
+the deterministic fake's, which is what HNSW actually traverses. The lane also
+measures the store and engine ports — not the gateway, the PDP round trip or
+JSON serialization.
 
 **4. Chain violations, endpoint-constraint violations and wrong-width vectors
 rejected with structured per-item errors — *met*, after a fix.** Chain
@@ -800,16 +1066,43 @@ asserts on the edge named in the message; removing the revalidation call makes
 it fail, which is the check that the first version would have survived.
 
 **5. Adversarial multi-tenant tests, zero cross-tenant data in every endpoint
-— *partly*.** Two tenants owning the same node key see only their own row, and
-the cross-tenant trap asserts its own fixture before trusting the pass. But
-that covers the store and the hop, not *every endpoint*: search, projection,
-node read and traversal are each scoped by construction and none has an
-adversarial case of its own.
+— *met at the store port; absent at REST*.** The sweep is one fixture and one
+case, `no_read_surface_answers_with_another_tenants_rows`
+(`tests/conformance/mod.rs:3627`), run against **both** stores. It seeds two
+tenants — one node key deliberately colliding — asserts the other tenant's
+fixture exists before trusting any absence, and then walks the read surfaces
+one by one: the node read and its adjacency, key resolution, hydration by a
+*foreign internal id* (the one surface where a missing tenant predicate does
+not show up as a key collision, and the one that D-036 found had been passing
+vacuously), the tabular projection, both search arms under text the two
+tenants share, the analytics topology load, and `embedding_state` — where a
+foreign key reading as *known* rather than `None` would make the coordinator
+skip work it owes. The edge read has its own case,
+`an_edge_whose_endpoint_is_hidden_is_not_readable`, on both stores; the hop has
+`a_hop_never_leaves_its_tenant`, on PostgreSQL only, because that is where the
+pattern backend exists.
 
-**6. `cfs validate` passes and CI meets the coverage threshold — *half*.**
-`cfs validate` passes: 238 artifacts, 0 errors. Coverage was never measured —
-`cargo llvm-cov` has not been run against this gear, so the 85 % line-coverage
-threshold in `nfr-code-coverage` is unknown rather than met.
+**What is plainly still absent: no adversarial case goes through REST.**
+`tests/rest.rs` drives the gear's own axum router and has a denial case
+(`a_denied_caller_cannot_tell_denial_from_absence`) but no two-tenant case at
+all, so what is established is that the *store port* does not answer with
+another tenant's rows — not that the HTTP surface above it cannot be made to.
+Every one of these surfaces is scoped by the compiled `AccessScope` the port
+receives, which is the reason to expect the REST cases to pass and not a
+reason to have skipped them: the criterion says *every endpoint*.
+
+**6. `cfs validate` passes and CI meets the coverage threshold — *met, and
+the threshold it is measured against is not the one the PRD states*.**
+`cfs validate` passes: 238 artifacts, 0 errors. Coverage has since been
+measured, which is **D-038**: the first run said 73.25 % regions / 71.66 %
+lines, and the shape of the gap mattered more than the number — every layer
+*above* the store port, the REST handlers and the admission bounds included,
+was at 0 %. After the tests written to close that gap — one of which found a
+defect of its own on the way (D-037) — it stands at **86.77 % regions, 87.02 % lines, 83.41 % functions**,
+over the 85 % `nfr-code-coverage` sets. The caveat is a gate, not a number:
+`tools/scripts/coverage.py` carries a project-wide `COVERAGE_THRESHOLD = 80`
+and no per-gear override, so CI enforces 80 here and the gear's own 85 is
+currently kept by hand — see D-048.
 
 ## Gaps this sweep found that no entry recorded
 
@@ -878,15 +1171,19 @@ does not ship it, and the API/schema leave room for it.
 ## D-101 [deferred] Labels
 `fr-labels` (PRD §5.2); tables `label`, `label_assignment`; label routes; per-hop label filters in traversal (`ExpandRequest.labels` stays in the plugin API, built-in engine returns `CAPABILITY_UNSUPPORTED`).
 
+**The deferral is uniform across the port, which is more than `ExpandRequest.labels`.** This entry used to name the traversal filter alone, and `GraphStoreV1` carries four label operations of its own: `upsert_label`, `delete_label`, `list_labels` and `assign_labels` (`graph-storage-sdk/src/plugin_api.rs:243-258`). **Both** implementations answer all four the same way — `Err(GraphStoreError::Unsupported { what: "labels" })` in `src/infra/store.rs:307-333` and in `src/infra/fake_store.rs:810-836` — which the domain maps to `CAPABILITY_UNSUPPORTED`, and no REST route reaches any of them. So a plugin author reading the trait sees the whole label contract present and refusing in one voice, rather than three arms refusing and a fourth quietly returning an empty list, which is the shape that would make "labels are deferred" look like "this tenant has no labels". **How it was checked:** every arm of both implementations read; there is no branch in either that writes a label row.
+
 ## D-102 [deferred] Change events via transactional outbox
 `fr-change-events` (PRD §5.2). The `emit_events` trait is stored with effective traits; nothing is published.
 
 ## D-103 [was deferred, now built] Embedding pipeline and the in-process ONNX provider
-`fr-embedding-pipeline` (PRD §5.4), `fr-embedding-dim-guard`, `fr-vector-search`, ADR-0005.
+`fr-embedding-pipeline` (PRD §5.4), `fr-embedding-dim-guard`, `fr-vector-search`, ADR-0004.
+
+*(Renumbered in place: this entry cited ADR-0005 throughout until a verification pass caught it. The embedding-provider decision is ADR-0004; ADR-0005 is SQL/PGQ access. Same correction as D-019.)*
 
 **What this entry used to record.** Embeddings were producer-supplied and dimension-guarded on ingest; `EmbeddingProviderV1` shipped as a trait with no implementation anywhere in the repository; the `embedding_space` table was deferred, so the identity half of `fr-embedding-dim-guard` was absent. That is no longer the state, and the entry is kept rather than deleted because what it was hiding is worth reading.
 
-**Producer-supplied vectors were not a small deferral.** They are option **C** of ADR-0005 — the option it rejects, in the words *"nothing enforces that all producers and the query side use the same model — mixed-model vector spaces silently break similarity ranking, and the gear cannot embed query text at all without a model"*. The prototype had exactly that shape: `NodeSpec.embedding` and `SearchRequest.query_vector`, width-checked and otherwise unexamined. Two producers with different models would have ranked against each other with nothing to detect it.
+**Producer-supplied vectors were not a small deferral.** They are option **C** of ADR-0004 — the option it rejects, in the words *"nothing enforces that all producers and the query side use the same model — mixed-model vector spaces silently break similarity ranking, and the gear cannot embed query text at all without a model"*. The prototype had exactly that shape: `NodeSpec.embedding` and `SearchRequest.query_vector`, width-checked and otherwise unexamined. Two producers with different models would have ranked against each other with nothing to detect it.
 
 **Built (`99e3c87bf`, `2b74dfef5`, `5c809f83b`):**
 - The Embedding Coordinator (`domain/embedding.rs`), composing each node's input from its name plus the payload paths its type declares in `vector_search`, hashing it canonically, and calling the provider once per batch. Composition and embedding happen **before** the transaction, which is where DESIGN's ingest sequence puts them (step 5, ahead of step 6) and costs nothing: validation has already resolved every type record.
@@ -897,9 +1194,9 @@ does not ship it, and the API/schema leave room for it.
 
 **Still deferred, and now the whole of what is left:**
 - **The model-change lifecycle.** `requested → scanning → embedding → validating → cutover → complete`, its administrative API, the resumable backfill and per-tenant progress. Nothing opens a second epoch: a boot that finds a different identity reports it and blocks the arm, which is the safe half of the lifecycle without the recovery half. The gear has no background task of any kind, so this is a new capability rather than a missing branch.
-- **The remote provider and its egress policy.** ADR-0005 requires a default-deny per-tenant policy over vendor, endpoint, region, data classes and vectorized fields before node text or user queries may leave a deployment. Building the plugin without that policy would be building the part that is easy to get wrong. *Superseded by D-025: the plugin is built; the policy is not.*
+- **The remote provider and its egress policy.** ADR-0004 requires a default-deny per-tenant policy over vendor, endpoint, region, data classes and vectorized fields before node text or user queries may leave a deployment. Building the plugin without that policy would be building the part that is easy to get wrong. *Superseded by D-025: the plugin is built; the policy is not.*
 - **Chunk embeddings.** The `chunk` table is deferred (D-100), so "and every content chunk" has nothing to embed, and the "bounded content prefix" of the composed text is a prefix of name-plus-attributes only.
-- **The readiness surface** that should report the active identity and dimension. The *behaviour* the FR asks for is enforced — at boot, and per request on the vector arm — but there is nowhere to read it from (D-109).
+- **What readiness reports about the space, rather than the surface itself.** The surface is built (D-033): the embedding-space component answers `healthy`, or `unhealthy` with the mismatch named, the vector arm listed as what it blocks and re-embedding named as the recovery. What it does not carry is any *value* — the active identity and its dimension are not in the response, and neither is the number of rows left stale under the active epoch, which is the count D-027 asks for. `ComponentReadiness` holds a state and three prose fields and no numbers, so this is a shape question on the readiness DTO rather than a missing capability.
 
 ## D-104 [was deferred, now partly built — see D-030] Index-activation lifecycle, dynamic index DDL — and payload filtering entirely
 `fr-index-admission` (PRD §5.1), ADR-0003 point 5 (`requested → building → active`, `CREATE INDEX CONCURRENTLY` worker, DDL queue keys). No runtime DDL, as recorded.
@@ -939,46 +1236,54 @@ ADR-0001 point 2 makes PG16+ the baseline and demands CI on both PG16 and PG19. 
 ## D-110 [deferred] Observability contract
 `fr-observability` deny-by-default telemetry allowlist: followed in spirit (no payload/query text in logs), but the metric/counter surface (saturation counters, high-watermark gauges per limit) is not built.
 
-## D-036 [impl] The fake numbered nodes per tenant, which made a leak test pass vacuously
+---
 
-`FakeGraphStore` allocated internal ids from a counter held **inside each tenant**, so the first node of tenant A and the first node of tenant B both had id 1. The built-in store's ids come from a PostgreSQL sequence and are unique across the whole database.
+# What the upstream contribution carries
 
-It never mattered until the adversarial sweep hydrated by a *foreign* internal id -- the one read surface where a missing tenant predicate does not show up as a key collision, because nothing about the request mentions a key. On the fake the foreign id was our own node's id, so the case got a row back, and the row it got back was the right one: the assertion would have passed whatever `hydrate_nodes` did with the tenant.
+A reviewer of the upstream PR does not need all fifty-odd entries; they need to
+know what is open, and in what order it would hurt. Ranked by release risk —
+security and silent-wrong-answer first, then behaviour narrower than the
+documents describe, then what waits on the platform. Each line names the entry
+that carries the detail.
 
-**Implementation:** the counter moved to the store as an `AtomicI64`. Nothing else changed; ids are opaque to every caller.
+**Security, and answers that are wrong without saying so.**
 
-**Worth stating generally:** a fake diverging from the real store is expected and fine where the divergence is declared (snapshots, D-007). This one was undeclared and invisible, and it disarmed a test rather than failing one. The conformance suite is the only thing that can catch that class, and only for behaviour it actually exercises.
+1. **The ingest producer principal is never carried into the store** (D-039) — the scope fence's owning-producer check compares an empty string with itself, so any writer in a tenant can replace any producer's scope, and the idempotency key is tenant- rather than tenant-and-producer-scoped. *Being fixed separately; a p1 authorization gap, not a deferral.*
+2. **A tombstoned edge is silently revived by the ordinary write path** (D-049) — a re-sync resurrects a deliberately deleted relationship and erases its tombstone audit; deleting an already-deleted row answers 404 where the contract says no-op. *Behaviour, not a deferral.*
+3. **A traversal hop that reaches the edge-scan budget truncates silently** (D-044) — `TruncationReason::EdgeScanCap` exists and nothing ever emits it, so an arbitrarily cut subgraph is reported as complete; the budget is also per hop rather than cumulative. *Behaviour.*
+4. **The authorizing permission's type pattern is not intersected with the caller's** (D-046) — DESIGN specifies an effective type set from both; the enforcer yields only an `AccessScope`, and type-family filtering has no test at all. *Half unimplemented, half untested.*
+5. **`nfr-response-bound` has no configuration key and nothing truncates before hydration** (D-041) — a page of individually admissible rows is unbounded in aggregate, which is a denial-of-service surface reachable with valid requests. *A p1 requirement with no implementation.*
+6. **An unconfigured deployment gets the deterministic fake embedding provider** (D-019) — vector search then answers well-formed, semantically arbitrary rankings, warned about only in a boot log. *A prototype default that must not ship as one.*
+7. **The remote embedding provider ships without the default-deny per-tenant egress policy ADR-0004 puts in front of it** (D-025) — selecting `remote` sends every tenant's node and query text to one configured endpoint. *A prototype trade, stated as such.*
 
-## D-037 [impl-gap, fixed] A type whose schema cannot compile registered successfully and failed every write
+**Narrower than the documents describe, and correct within its narrower shape.**
 
-Registration validated the derivation chain from the **identifier** -- which is where the chain lives -- and never compiled the schema body. A `$ref` to something nobody registered therefore passed registration and failed at the first ingest of that type, with `schema does not compile: unresolved schema reference ...`. The producer got a success for the act that was wrong and a failure for every act that was right.
+8. **Writes are one statement per row** where `fr-bulk-ingest` requires batched statements (D-040) — inside the published budgets today, on the slow part of a non-linear curve for large graphs.
+9. **The neighborhood projection truncates by arrival order, not by degree** (D-042) — well-formed, bounded, and keeps the wrong nodes.
+10. **Traversal takes explicit seed keys only, reports no seed list or admitted-seed count, and bounds the raw seed set before dedup and authorization** (D-043) — the search-then-expand scenario is two calls the caller joins.
+11. **The deadline is minted per store call rather than per request, and no store read consults it** (D-052) — what actually kills a slow request is the gateway's 30 s ceiling.
+12. **A search hit carries no element envelope** (D-045) — defensible while a hit is a payload-free reference, undecided in writing.
+13. **`idempotency_retention_days` is a key nothing reads** (D-047) and **`nfr-code-coverage`'s 85 % is gated by CI at 80 %** (D-048) — two documented enforcements that do not enforce.
+14. **The built-in store declines the one-snapshot obligation** (D-007) and **the tabular projection reports its revision per row rather than per page** (D-005, D-021) — both declared through the capability mechanism rather than hidden.
+15. **Base schemas have no upgrade path once published** (D-013) — a base-schema edit, editorial ones included, can never reach a database that has already published it.
+16. **Lexical search cannot find identifiers inside file names** (D-028) — the default parser's token classes, fixable in the composed search text.
+17. **Payload filtering and ordering are built without the index-activation lifecycle** (D-030, D-104) — equality is indexed, range and order read the extraction expression; a declared path is filterable the moment it is declared, with no capacity check.
+18. **Scope replacement's row ceilings exist only in the built-in store** (D-034) — the conformance suite covers the grounds on both implementations and the bounds on neither.
 
-Found by driving registration through the domain service for the first time (`tests/service.rs`).
+**Agreed scope cuts, shipped as gaps rather than as surprises.**
 
-**Implementation:** both stores now compile the chain validator at registration, immediately after `analyze`, and report a compile failure as a per-item validation error. It is the same validator ingest compiles, so a type that registers is a type that can admit an instance.
+19. Labels, entirely — and the whole of the port refuses in one voice (D-101).
+20. Content chunking and heavy-content offload (D-100); change events via the transactional outbox (D-102); tenant offboarding (D-106); analytics topology role and metric annotation (D-107); the fairness and queueing half of the admission layer (D-105); the observability counter surface (D-110).
+21. The embedding model-change lifecycle and its resumable backfill (D-103) — the safe half (refuse on identity mismatch) without the recovery half.
+22. The retained-revision history behind type evolution, and a backfill for what a migration marked stale (D-031) — deferred by decision, and waiting with two other needs on a background task the gear does not have.
+23. No epoch-rotation mechanism, so `fr-snapshot-identity` holds for idempotency receipts only (D-050).
 
-**Two things fell out of it.** The base ontology is now always resolvable inside `ChainValidator::compile`, not only when it happens to be on the chain: an analysis edge references the *provenance attribute*, a sibling family that is never an ancestor, so compiling the analysis-edge family type failed while compiling a leaf derived from it succeeded. And the conformance suite's own phantom case carried a misspelled `$ref` (`gts://gts.cf.core.graph.reference_node.v1~`, missing the `node.v1~` segment) which nothing had ever resolved, because nothing had ever compiled it.
+**Platform gaps — nothing in this gear closes them.**
 
-**Proposal:** none for the documents -- `fr-type-registration` already asks for a registration that validates. This is the implementation catching up with it.
-
-## D-038 [impl-gap, fixed] Coverage was never measured, and four surfaces had no test at all
-
-`nfr-code-coverage` sets 85 %. `cargo llvm-cov` had never been run against this gear, so the number was unknown and, more to the point, so was *what* was uncovered. The first run said 73.25 % regions / 71.66 % lines, and the shape of the gap was more interesting than the number:
-
-| surface | lines covered before |
-| --- | --- |
-| `domain/service.rs` -- the layer every request goes through | 0 % |
-| `api/rest/{handlers,dto,error}.rs` | 0 % |
-| `domain/local_client.rs` -- the `ClientHub` entrance | 0 % |
-| `domain/admission.rs` -- the Capacity and Admission Contract | 0 % |
-| `infra/store/evolution.rs`, edge branch | 0 % |
-| `infra/store/spaces.rs` -- boot-time embedding-space resolution | 0 % |
-
-The conformance suite calls `GraphStoreV1` directly, which is deliberate and right; the consequence nobody had drawn is that everything *above* the port was unexercised, including the admission bounds that are the gear's half of the capacity contract.
-
-**Implementation:** `tests/service.rs` (the real `GraphServices`, a real `PolicyEnforcer` over a stub PDP, a one-hop engine over the in-memory store), `tests/rest.rs` (real requests through the gear's own axum router), an exhaustive `DomainError` to `CanonicalError` mapping test, a local-client parity case, an edge-type evolution case on both stores, and a boot-resolution case on a real server.
-
-**After: 86.77 % regions, 87.02 % lines, 83.41 % functions.** The remaining uncovered block of any size is `gear.rs` (the composition root, which needs a platform to boot) and the refusal branches of `store/types.rs`.
-
-**What the writing of them found** is recorded separately: [D-037](#d-037-impl-gap-fixed-a-type-whose-schema-cannot-compile-registered-successfully-and-failed-every-write). Worth saying once here: a coverage number is a poor goal and a good instrument. Chasing 85 % is how the fact that no test had ever sent an HTTP request to this gear became visible.
-
+24. **No row-locking surface in the secure ORM** (D-035) — the fence is an upsert because `SELECT … FOR UPDATE` is unreachable from a gear; the next gear that needs one will write the same three broken steps.
+25. **No DDL surface a gear may call** (D-104), which is what blocks per-path indexes and the activation lifecycle above them.
+26. **No per-request OData field set and no field-to-expression mapping** (D-104) — the gear renders the plan itself meanwhile.
+27. **No revision slot on `CursorV1`/`PageInfo`** (D-005) — closed for this gear by putting the revision on the element (D-021), still true of the platform.
+28. **No PG19 + pgvector test image** (D-003) and **no PG16 lane** (D-108); **readiness cannot name the required server major** (D-004), a diagnostics gap rather than a correctness one.
+29. **No platform health surface for the PEP**, so the authz row of the readiness matrix is reported absent rather than healthy (D-033).
+30. **No startup publication to the platform types-registry** (D-051) — the gear keeps only its own per-tenant projection, so producers cannot browse the base ontology to derive from it and administrators cannot grant permissions over types the registry has never seen.
