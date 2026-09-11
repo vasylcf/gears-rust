@@ -168,6 +168,21 @@ workspace wiring, the example-server registration and the CI entry; add a
 `test-containers` PG19 + pgvector ask so the strongest lane runs in CI rather
 than only on a developer's machine. `dev/` does **not** go upstream (§ 6).
 
+**Done, on branch `feature/graph-storage-upstream`** (2026-09-11, pushed to
+the fork; the notes branch `feature/graph-storage-v2` keeps `dev/`):
+
+| item | what was done |
+| --- | --- |
+| rebase onto main | 66 commits onto `5cd94460d`. Two traps, both worth remembering. A rebase **drops merge commits and the conflict resolutions made in them** — here that silently reverted the toolkit-db #4639 adaptation (`correlate_with_anchor`, the `GraphSyntax` arm, the two backend-reporting cases), so the pattern hop would have fallen back on every traversal without saying so. And `-Xtheirs` is not a shortcut: it clobbered main's `github-mirror` registration and reverted parts of our own files. The fix both times was to diff the rebased tree against the tree it came from, not to trust that it compiled |
+| `publish` | removed from all four crates; siblings declare nothing and are published by the release tooling |
+| versions | left as the gear's history has them (gear 0.1.2, sdk 0.1.1, plugins 0.1.0); the workspace dependency said 0.1.1 for a 0.1.2 crate, which caret matching hid. **Publish order is sdk → gear → plugins**: the dependents cannot be packaged until the sdk is on crates.io (`cargo package` refuses, as it should) |
+| workspace, example-server, CI | already on the branch; verified by building the example server with `--features graph-storage` |
+| `test-graph-storage-pg` | added, with `GEARS_TEST_PG_GRAPH_REQUIRED=1` baked in — a target whose whole purpose is the database has no business passing without one. `test-graph-storage` now runs exactly the database-free lanes |
+| PG19 + pgvector ask | text drafted (scratchpad `pgvector-issue.md`), **not filed** — filing is outward-facing and waits for a word |
+| `dev/` | removed from the upstream branch, and every reference to it rewritten: three in ADR-0006, one in the README, twelve in code comments, plus four internal deviation codes that were being served to operators inside `GET /health/ready` text |
+
+Not done, deliberately: no PR opened, nothing published, no issue filed.
+
 ### After it merges
 
 release-plz publishes the four crates. studio-web then drops the fork tag and
