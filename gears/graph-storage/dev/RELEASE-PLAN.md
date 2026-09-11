@@ -183,6 +183,38 @@ the fork; the notes branch `feature/graph-storage-v2` keeps `dev/`):
 
 Not done, deliberately: no PR opened, nothing published, no issue filed.
 
+**Second pass, 2026-09-11 — the documents read against the code, line by
+line.** Four parallel audits (PRD § 5.1–5.2, § 5.3–5.6, § 5.7–5.10 + § 6–7,
+and DESIGN § 3.3/§ 3.7 contract-by-contract), plus a verification pass over
+DEVIATIONS itself. What came out of it, on the upstream branch:
+
+| fixed | what it was |
+| --- | --- |
+| producer identity | `ingest` set its producer to `""`, so the idempotency key was tenant-scoped rather than tenant-and-producer-scoped and the scope fence's owner check compared `""` with `""`. **Any writer in the tenant could replace any other's scope**, deleting every row absent from its own batch. Both columns were in the first migration; only the value was missing |
+| `options.report_per_item` | accepted, forwarded, ignored by both stores. Now one shared tally feeds the counters and the per-item list, so they cannot disagree |
+| type filter on search | the in-memory store ignored `type_patterns` entirely — a p1 requirement honoured by one implementation of two. Found by writing the first test that ever passed a pattern |
+| searchable text | the fake matched names, the built-in store matched the composed text, so a type declaring `full_text_search` paths was searchable on one store only. Both compose it with the same function now |
+| degree-ordered retention | `fr-neighborhood-projection` promises it; retention was arrival order by internal id. The degree has to be the neighbour's own connectivity — at depth one the within-hop count is 1 for everyone — so the engine reports it, opt-in, from a second scoped read |
+| edge-scan budget | `TruncationReason::EdgeScanCap` was in the vocabulary, rendered by the DTO, produced by nothing: a hop over a dense region returned a partial subgraph a caller could not tell from a whole one |
+| same-key type change | answered `400 SCHEMA_VIOLATION`; the protocol calls it a conflict, and the payload may be valid under the new type |
+| edge delete | checked only the edge row's scope, while the edge *read* requires both endpoints visible |
+| double delete | answered 404 where the Soft Delete Contract says no-op — so a producer retrying a delete whose response was lost could not tell "already done" from "never existed" |
+| traversal seeds | the response never said which seeds it walked from, though unknown and denied seeds are absent alike |
+| reason codes | every generic bad request was stamped `LIMIT_COMBINATION`; a client matching the vocabulary was told it had combined limits wrongly when it sent an unknown enum value |
+| adjacency bound | the fake bounded the total, the built-in store bounds per direction — an undeclared divergence of exactly the class D-036 warns about |
+| embedding provider | defaulted to the deterministic fake, so a deployment that forgot the key got meaningless rankings and one `warn` line. Unset is now a boot failure |
+| log hygiene | the remote provider logged a 512-character excerpt of the vendor's error body |
+| the PG lane | its skip guard was inverted (all 57 cases failed instead of skipping on a machine without the image); it started 64 containers before deciding to skip; and it was flaky under its own parallelism |
+| CI | the lane never ran in CI at all. It does now, on an image the gear builds itself, in the same job that enforces the 85 % coverage floor `nfr-code-coverage` asks for — without the lane the figure is ~55 %, because the built-in store is the half only a real server exercises |
+
+Eight new conformance cases, all on both stores. Lanes now: 87 unit, 56 fake,
+65 PostgreSQL, 15 service, 8 REST, 2 + 7 + 8 provider. Coverage with the
+PostgreSQL lane: **87.36 % regions, 87.56 % lines, 83.67 % functions.**
+
+The documents were amended in step — every correction marked "Found while
+building the prototype" — and `cfs validate` went from 1 error to 0 (ADR-0006
+was referenced from no DESIGN artifact). PR text: [`PR3-BODY.md`](./PR3-BODY.md).
+
 ### After it merges
 
 release-plz publishes the four crates. studio-web then drops the fork tag and
