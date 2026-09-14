@@ -203,8 +203,25 @@ things the opening itself taught:
   the automated review this repository usually gets does not happen here. Worth
   saying in the PR rather than letting a reviewer assume it ran.
 
-Nothing published; the `test-containers` PG19 + pgvector ask is still not filed
-(the gear builds its own image meanwhile, so the lane no longer waits on it).
+Nothing published. The `test-containers` PG19 + pgvector ask **was** filed, on
+2026-08-27, as
+[#4666](https://github.com/constructorfabric/gears-rust/issues/4666) — the note
+here saying otherwise was wrong, and the draft in the scratchpad was a second
+copy of something already open. Still open, unassigned, no comments.
+
+What it needs is not filing but a correction, because its own proposed recipe
+is the one that does not work: it recommends the CloudNativePG operand base,
+which has no `docker-entrypoint.sh`, so `test-containers` cannot start it at
+all (D-003 found this afterwards). The working base is official
+`postgres:19beta3`, and the file now lives in the PR at
+`gears/graph-storage/docker/pg19-pgvector.Dockerfile`. Its other claim — that
+the lane cannot be a required CI check — is also out of date as of #4794.
+Draft comment: `pgvector-issue-followup.md` in the local archive.
+
+**After PostgreSQL 19 GA** (expected around 2026-10): `pgvector/pgvector:pg19`
+appears, `POSTGRES_GRAPH_TAG` moves to it, and the gear deletes its Dockerfile
+and the image-build step from its CI job. Checked 2026-09-14: Docker Hub still
+tops out at `0.8.6-pg18`.
 
 **Second pass, 2026-09-11 — the documents read against the code, line by
 line.** Four parallel audits (PRD § 5.1–5.2, § 5.3–5.6, § 5.7–5.10 + § 6–7,
