@@ -216,7 +216,7 @@ all (D-003 found this afterwards). The working base is official
 `postgres:19beta3`, and the file now lives in the PR at
 `gears/graph-storage/docker/pg19-pgvector.Dockerfile`. Its other claim — that
 the lane cannot be a required CI check — is also out of date as of #4794.
-Draft comment: `pgvector-issue-followup.md` in the local archive.
+That correction is posted: [issue comment](https://github.com/constructorfabric/gears-rust/issues/4666#issuecomment-5658619364), 2026-09-14.
 
 **After PostgreSQL 19 GA** (expected around 2026-10): `pgvector/pgvector:pg19`
 appears, `POSTGRES_GRAPH_TAG` moves to it, and the gear deletes its Dockerfile
