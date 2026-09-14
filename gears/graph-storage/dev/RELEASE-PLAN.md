@@ -181,7 +181,30 @@ the fork; the notes branch `feature/graph-storage-v2` keeps `dev/`):
 | PG19 + pgvector ask | text drafted (scratchpad `pgvector-issue.md`), **not filed** — filing is outward-facing and waits for a word |
 | `dev/` | removed from the upstream branch, and every reference to it rewritten: three in ADR-0006, one in the README, twelve in code comments, plus four internal deviation codes that were being served to operators inside `GET /health/ready` text |
 
-Not done, deliberately: no PR opened, nothing published, no issue filed.
+**Opened 2026-09-14: [#4794](https://github.com/constructorfabric/gears-rust/pull/4794)**
+(`vasylcf:feature/graph-storage-upstream` → `main`), 109 files, +33 089. Three
+things the opening itself taught:
+
+- **DCO is a gate, and half the branch failed it.** The repository requires a
+  `Signed-off-by` trailer on every commit; 47 of the 81 had none. The remedy is
+  a history rewrite, so it is worth doing as you go rather than at the end:
+  `git commit -s`, or `git rebase --signoff`. Ours was re-signed with each
+  commit's *own* author identity — the branch carries two addresses — and the
+  rewritten tree was diffed against the pushed one before the force-push, which
+  is the check that makes the rewrite safe to do at all. The pre-rewrite tip
+  stays reachable through the `cf-gears-graph-storage-v0.1.4` tag, which is what
+  studio-web points at.
+- **`main` moves under you.** It was 24 commits ahead by the time the PR went
+  up, including types-registry work touching the same ground as ADR-0006. The
+  branch merged cleanly, but that was verified rather than assumed: the merge
+  was taken in a throwaway worktree and the whole suite run on it, PostgreSQL
+  lane included, before the PR was opened.
+- **CodeRabbit skips a PR over 100 files** ("108 files exceed the limit"), so
+  the automated review this repository usually gets does not happen here. Worth
+  saying in the PR rather than letting a reviewer assume it ran.
+
+Nothing published; the `test-containers` PG19 + pgvector ask is still not filed
+(the gear builds its own image meanwhile, so the lane no longer waits on it).
 
 **Second pass, 2026-09-11 — the documents read against the code, line by
 line.** Four parallel audits (PRD § 5.1–5.2, § 5.3–5.6, § 5.7–5.10 + § 6–7,
