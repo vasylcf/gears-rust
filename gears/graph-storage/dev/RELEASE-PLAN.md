@@ -199,9 +199,32 @@ things the opening itself taught:
   branch merged cleanly, but that was verified rather than assumed: the merge
   was taken in a throwaway worktree and the whole suite run on it, PostgreSQL
   lane included, before the PR was opened.
+- **Three CI failures, and only one was ours.** "Integration tests" failed on a
+  Docker Hub pull error and "Code Coverage" on a redis timing test, both in
+  other gears, both green on a re-run. The one that was ours was subtler: the
+  gear's dev-dependency asked toolkit-db for its `integration` feature, cargo
+  unifies features across a workspace build, and that turned on toolkit-db's
+  own Docker-backed suites for every `cargo test --workspace` in the
+  repository — so the macOS lane, which has no Docker, failed on a crate this
+  branch does not touch. No other manifest in the workspace enables it; the
+  Makefile targets pass `--features integration` on the command line for
+  exactly this reason. **A dependency feature is a workspace-wide decision,
+  not a per-crate one.**
+- **`codecov/patch` measured the wrong thing, and the fix was to give it more
+  data rather than to argue.** It failed at 76.75% against an 85% target,
+  because the workspace coverage job cannot run this gear's PostgreSQL lane and
+  the built-in store therefore reads as untested. The gear's own job already
+  measured 87.88%; it now uploads its lcov too, Codecov merges uploads per
+  commit, and the check reports 87.14%. Building the image and re-running the
+  66 container cases inside the shared job would have cost the same five
+  minutes twice for the same evidence.
 - **CodeRabbit skips a PR over 100 files** ("108 files exceed the limit"), so
   the automated review this repository usually gets does not happen here. Worth
   saying in the PR rather than letting a reviewer assume it ran.
+
+**Green on 2026-09-14** after those fixes: 36 checks pass, 1 skipped, none
+failing, and the PR is mergeable. The three OS test suites take 55 minutes to
+an hour and a half; the gear's own lane takes five.
 
 Nothing published. The `test-containers` PG19 + pgvector ask **was** filed, on
 2026-08-27, as
