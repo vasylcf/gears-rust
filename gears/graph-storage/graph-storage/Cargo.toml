@@ -1,10 +1,10 @@
 [package]
-name = "cf-gears-graph-storage"
-version = "0.1.4"
+name = "weftgraph"
+version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
-repository.workspace = true
+repository = "https://github.com/vasylcf/gears-rust"
 rust-version.workspace = true
 readme = "README.md"
 description = "Graph Storage gear: typed, multi-tenant knowledge graph with search and traversal over a pluggable store"
@@ -80,7 +80,7 @@ toolkit-db-macros = { workspace = true }
 # Re-imports this crate with `test-support` on, so the in-memory double is
 # available to `tests/`. Cargo unifies the lib-under-test edge with this one
 # into a single compilation, exactly as bss-pricing does for its own harness.
-graph-storage = { package = "cf-gears-graph-storage", path = ".", features = ["test-support"] }
+graph-storage = { package = "weftgraph", path = ".", features = ["test-support"] }
 test-containers = { workspace = true }
 # The executable plugin contracts: every provider and store implementation
 # proves itself against the same assertions, wherever it lives.
