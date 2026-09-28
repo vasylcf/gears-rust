@@ -13235,7 +13235,7 @@ checksum = "a28ac98ddc8b9274cb41bb4d9d4d5c425b6020c50c46f25559911905610b4a88"
 
 [[package]]
 name = "weftgraph"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -13280,7 +13280,7 @@ dependencies = [
 
 [[package]]
 name = "weftgraph-onnx-embedding-plugin"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "aws-lc-rs",
@@ -13298,7 +13298,7 @@ dependencies = [
 
 [[package]]
 name = "weftgraph-remote-embedding-plugin"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "reqwest",
@@ -13316,7 +13316,7 @@ dependencies = [
 
 [[package]]
 name = "weftgraph-sdk"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "aws-lc-rs",
