@@ -1,4 +1,12 @@
-# cf-gears-graph-storage-remote-embedding-plugin
+# weftgraph-remote-embedding-plugin
+
+> **`weftgraph-remote-embedding-plugin` is a code name and this is a release candidate.** It is a preview
+> of the next `cf-gears-graph-storage-remote-embedding-plugin` release (0.3.0), published from the fork
+> [vasylcf/gears-rust](https://github.com/vasylcf/gears-rust) so that a
+> consumer can test it before the official crate is released. Official
+> releases are `cf-gears-graph-storage-remote-embedding-plugin` on crates.io; switch back to it once 0.3.0 is out.
+> The library keeps its `remote_embedding_plugin` name, so the switch is the `package =` line
+> in a consumer's manifest.
 
 The remote embedding provider of the graph-storage gear: the alternative plugin
 [ADR-0004](../docs/ADR/0004-cpt-cf-graph-storage-adr-embedding-provider.md)
