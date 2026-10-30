@@ -40,5 +40,5 @@ toolkit-macros = { workspace = true }
 toolkit-security = { workspace = true }
 
 [dev-dependencies]
-graph-storage-sdk = { package = "cf-gears-graph-storage-sdk", path = "../../graph-storage/graph-storage-sdk" }
+graph-storage-sdk = { package = "weftgraph-sdk", path = "../../graph-storage/graph-storage-sdk" }
 jsonschema = { workspace = true }

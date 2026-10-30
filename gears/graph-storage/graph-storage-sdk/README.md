@@ -1,4 +1,12 @@
-# cf-gears-graph-storage-sdk
+# weftgraph-sdk
+
+> **`weftgraph-sdk` is a code name and this is a release candidate.** It is a preview
+> of the next `cf-gears-graph-storage-sdk` release (0.3.0), published from the fork
+> [vasylcf/gears-rust](https://github.com/vasylcf/gears-rust) so that a
+> consumer can test it before the official crate is released. Official
+> releases are `cf-gears-graph-storage-sdk` on crates.io; switch back to it once 0.3.0 is out.
+> The library keeps its `graph_storage_sdk` name, so the switch is the `package =` line
+> in a consumer's manifest.
 
 The public contract of the graph-storage gear, for consumers and plugin authors:
 
