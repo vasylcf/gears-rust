@@ -20,8 +20,9 @@ use toolkit_odata::{Page as OdataPage, SortDir};
 use uuid::Uuid;
 
 use crate::infra::projections::{
-    EdgeHop, NodeIdent, NodeTyped, TypeName, TypeTraits, edge_hop_columns, node_ident_columns,
-    node_typed_columns, type_name_columns, type_traits_columns,
+    EdgeHop, NodeIdent, NodeTyped, NodeViewRow, TypeName, TypeTraits, edge_hop_columns,
+    node_ident_columns, node_typed_columns, node_view_columns, type_name_columns,
+    type_traits_columns,
 };
 use crate::infra::storage::entity::{edge, graph_meta, gts_type, node};
 use crate::infra::storage::odata_mapper::NodeODataMapper;
@@ -325,6 +326,7 @@ async fn observed_revision(
 
 fn to_view(
     model: node::Model,
+    has_embedding: bool,
     type_id: String,
     adjacency: Vec<AdjacencyEntry>,
     truncated: bool,
@@ -336,7 +338,7 @@ fn to_view(
         type_id,
         name: (!model.name.is_empty()).then_some(model.name),
         payload: Some(model.payload),
-        has_embedding: model.embedding.is_some(),
+        has_embedding,
         labels: Vec::new(),
         adjacency,
         adjacency_truncated: truncated,
@@ -351,14 +353,23 @@ pub async fn get_node(
     adjacency_limit: u32,
 ) -> Result<NodeView, GraphStoreError> {
     let conn = store.db().conn().map_err(|error| map_db_error(&error))?;
-    let model = node::Entity::find()
+    let NodeViewRow {
+        model,
+        has_embedding,
+    } = node::Entity::find()
         .secure()
         .scope_with(ctx.scope)
         .filter(Condition::all().add(node::Column::NodeKey.eq(key.clone())))
         .filter(Condition::all().add(node::Column::DeletedAt.is_null()))
-        .one(&conn)
+        .project_all(&conn, |query| {
+            node_view_columns(query)
+                .limit(1)
+                .into_model::<NodeViewRow>()
+        })
         .await
         .map_err(map_scope_err)?
+        .into_iter()
+        .next()
         .ok_or(GraphStoreError::NotFound)?;
 
     // Bidirectional adjacency, one extra row so truncation is observed rather
@@ -461,7 +472,14 @@ pub async fn get_node(
         .cloned()
         .unwrap_or_else(unknown);
     let revision = observed_revision(ctx, &conn).await?;
-    Ok(to_view(model, type_id, adjacency, truncated, revision))
+    Ok(to_view(
+        model,
+        has_embedding,
+        type_id,
+        adjacency,
+        truncated,
+        revision,
+    ))
 }
 
 /// The gear-assigned envelope of an edge row (`fr-audit-envelope`).
@@ -559,16 +577,18 @@ pub async fn hydrate_nodes(
         return Ok(Vec::new());
     }
     let conn = store.db().conn().map_err(|error| map_db_error(&error))?;
-    let models = node::Entity::find()
+    let rows = node::Entity::find()
         .secure()
         .scope_with(ctx.scope)
         .filter(Condition::all().add(node::Column::Id.is_in(ids.to_vec())))
         .filter(Condition::all().add(node::Column::DeletedAt.is_null()))
-        .all(&conn)
+        .project_all(&conn, |query| {
+            node_view_columns(query).into_model::<NodeViewRow>()
+        })
         .await
         .map_err(map_scope_err)?;
 
-    let mut type_ids: Vec<i32> = models.iter().map(|m| m.gts_node_type_id).collect();
+    let mut type_ids: Vec<i32> = rows.iter().map(|r| r.model.gts_node_type_id).collect();
     type_ids.sort_unstable();
     type_ids.dedup();
     let names = type_names(ctx, &conn, &type_ids).await?;
@@ -576,15 +596,26 @@ pub async fn hydrate_nodes(
     // Preserve the caller's order — the walk's order is deterministic and
     // callers rely on seeds coming first.
     let revision = observed_revision(ctx, &conn).await?;
-    let mut by_id: BTreeMap<i64, node::Model> = models.into_iter().map(|m| (m.id, m)).collect();
+    let mut by_id: BTreeMap<i64, NodeViewRow> = rows.into_iter().map(|r| (r.model.id, r)).collect();
     let mut views = Vec::new();
     for id in ids {
-        if let Some(model) = by_id.remove(id) {
+        if let Some(NodeViewRow {
+            model,
+            has_embedding,
+        }) = by_id.remove(id)
+        {
             let type_id = names
                 .get(&model.gts_node_type_id)
                 .cloned()
                 .unwrap_or_default();
-            views.push(to_view(model, type_id, Vec::new(), false, revision));
+            views.push(to_view(
+                model,
+                has_embedding,
+                type_id,
+                Vec::new(),
+                false,
+                revision,
+            ));
         }
     }
     Ok(views)

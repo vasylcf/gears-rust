@@ -429,6 +429,10 @@ pg_case!(
     conformance::a_stale_vector_stops_ranking_but_the_node_stays
 );
 pg_case!(
+    the_view_reads_report_whether_a_vector_is_stored,
+    conformance::the_view_reads_report_whether_a_vector_is_stored
+);
+pg_case!(
     only_the_active_epoch_ranks,
     conformance::only_the_active_epoch_ranks
 );
