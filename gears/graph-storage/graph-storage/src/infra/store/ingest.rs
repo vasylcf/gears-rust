@@ -18,7 +18,9 @@ use graph_storage_sdk::plugin_api::{EmbeddingPlan, GraphStoreError, StoreCtx};
 use sea_orm::sea_query::{Expr, OnConflict};
 use sea_orm::{ActiveValue, ColumnTrait, Condition, EntityTrait, ExprTrait, QueryFilter};
 use time::OffsetDateTime;
-use toolkit_db::secure::{DBRunner, SecureEntityExt, SecureInsertExt, SecureUpdateExt};
+use toolkit_db::secure::{
+    DBRunner, SecureEntityExt, SecureInsertExt, SecureInsertManyExt, SecureUpdateExt,
+};
 use toolkit_security::AccessScope;
 use uuid::Uuid;
 
@@ -353,9 +355,10 @@ struct Writer<'a> {
     subject: &'a Subject,
     /// What is left of the request's absolute deadline.
     ///
-    /// A producer-sized batch is tens of thousands of sequential statements
-    /// inside one transaction holding one pool connection, so "the deadline
-    /// passed" has to be able to stop it between items. It cannot stop a
+    /// A producer-sized batch's updates are still one statement each inside
+    /// one transaction holding one pool connection (new rows are inserted
+    /// in bulk, gears-rust #5040), so "the deadline passed" has to be able
+    /// to stop it between items. It cannot stop a
     /// statement already in flight -- that needs a server-side bound
     /// toolkit-db does not offer yet (gears-rust #4761) -- but it can stop
     /// the gear from starting the next ten thousand.
@@ -1071,34 +1074,19 @@ async fn upsert_node(
                 ),
             });
         }
-        let active = node::ActiveModel {
-            tenant_id: ActiveValue::Set(tenant),
-            id: ActiveValue::NotSet,
-            node_key: ActiveValue::Set(spec.node_key.clone()),
-            gts_node_type_id: ActiveValue::Set(info.id),
-            name: ActiveValue::Set(name.clone()),
-            payload: ActiveValue::Set(payload.clone()),
-            search_text: ActiveValue::Set(search_text.clone()),
-            embedding: ActiveValue::Set(vector.embedding),
-            embedding_epoch: ActiveValue::Set(vector.epoch),
-            embedding_input_hash: ActiveValue::Set(vector.input_hash),
-            // Written once, on insert, and never by an upsert: the row's
-            // record of who created it is provenance, and provenance that a
-            // later write can rewrite is not provenance. Who may write the
-            // namespace *now* is the registry's answer, not this column's.
-            source_namespace: ActiveValue::Set(namespace),
-            owner_principal: ActiveValue::Set(subject.principal()),
-            version: ActiveValue::Set(1),
-            created_at: ActiveValue::Set(now),
-            updated_at: ActiveValue::Set(now),
-            deleted_at: ActiveValue::Set(None),
-            created_by_subject_id: ActiveValue::Set(subject.subject_id),
-            created_by_subject_type: ActiveValue::Set(subject.subject_type.clone()),
-            updated_by_subject_id: ActiveValue::Set(subject.subject_id),
-            updated_by_subject_type: ActiveValue::Set(subject.subject_type.clone()),
-            deleted_by_subject_id: ActiveValue::Set(None),
-            deleted_by_subject_type: ActiveValue::Set(None),
-        };
+        let active = new_node_row(
+            w,
+            spec,
+            info,
+            NewNode {
+                name: name.clone(),
+                payload: payload.clone(),
+                search_text: search_text.clone(),
+                vector,
+                namespace,
+                now,
+            },
+        );
         if let Some(id) = insert_node_row(scope, tx, active).await? {
             return Ok((id, ItemOutcome::Inserted));
         }
@@ -1301,6 +1289,96 @@ async fn upsert_node(
 /// this one then updated is exactly what the caller's update branch writes.
 /// The same shape as `insert_phantom`, including how the elided insert is
 /// reported.
+/// What a new node row carries besides its key, type and writer.
+struct NewNode {
+    name: String,
+    payload: serde_json::Value,
+    search_text: String,
+    vector: VectorWrite,
+    namespace: Option<String>,
+    now: OffsetDateTime,
+}
+
+/// The row a node is inserted as, by the item path and the bulk insert alike.
+fn new_node_row(
+    w: Writer<'_>,
+    spec: &NodeSpec,
+    info: &TypeInfo,
+    new: NewNode,
+) -> node::ActiveModel {
+    let subject = w.subject;
+    node::ActiveModel {
+        tenant_id: ActiveValue::Set(w.tenant),
+        id: ActiveValue::NotSet,
+        node_key: ActiveValue::Set(spec.node_key.clone()),
+        gts_node_type_id: ActiveValue::Set(info.id),
+        name: ActiveValue::Set(new.name),
+        payload: ActiveValue::Set(new.payload),
+        search_text: ActiveValue::Set(new.search_text),
+        embedding: ActiveValue::Set(new.vector.embedding),
+        embedding_epoch: ActiveValue::Set(new.vector.epoch),
+        embedding_input_hash: ActiveValue::Set(new.vector.input_hash),
+        // Written once, on insert, and never by an upsert: the row's record
+        // of who created it is provenance, and provenance that a later write
+        // can rewrite is not provenance. Who may write the namespace *now* is
+        // the registry's answer, not this column's.
+        source_namespace: ActiveValue::Set(new.namespace),
+        owner_principal: ActiveValue::Set(subject.principal()),
+        version: ActiveValue::Set(1),
+        created_at: ActiveValue::Set(new.now),
+        updated_at: ActiveValue::Set(new.now),
+        deleted_at: ActiveValue::Set(None),
+        created_by_subject_id: ActiveValue::Set(subject.subject_id),
+        created_by_subject_type: ActiveValue::Set(subject.subject_type.clone()),
+        updated_by_subject_id: ActiveValue::Set(subject.subject_id),
+        updated_by_subject_type: ActiveValue::Set(subject.subject_type.clone()),
+        deleted_by_subject_id: ActiveValue::Set(None),
+        deleted_by_subject_type: ActiveValue::Set(None),
+    }
+}
+
+/// Insert `rows` -- new keys, in key order -- in one statement per
+/// [`PREFETCH_CHUNK`] rows, and return the keys and ids of the rows that
+/// landed.
+///
+/// `ON CONFLICT DO NOTHING RETURNING` returns only the rows it inserted, so a
+/// key another batch inserted since the up-front read is simply absent from
+/// the answer; the caller writes it on the item path, which settles a lost
+/// race exactly as before (gears-rust #5040).
+async fn insert_new_rows<E>(
+    scope: &AccessScope,
+    tx: &impl DBRunner,
+    rows: Vec<E::ActiveModel>,
+    conflict: OnConflict,
+    key_and_id: impl Fn(&E::Model) -> (String, i64),
+) -> Result<BTreeMap<String, i64>, GraphStoreError>
+where
+    E: sea_orm::EntityTrait + toolkit_db::secure::ScopableEntity,
+    E::ActiveModel: sea_orm::ActiveModelTrait<Entity = E> + Send,
+    E::Model: sea_orm::IntoActiveModel<E::ActiveModel>,
+{
+    let mut landed = BTreeMap::new();
+    let mut rest = rows;
+    while !rest.is_empty() {
+        let take = PREFETCH_CHUNK.min(rest.len());
+        let chunk: Vec<E::ActiveModel> = rest.drain(..take).collect();
+        let inserted = E::insert_many(chunk)
+            .secure()
+            .scope_unchecked(scope)
+            .map_err(map_scope_err)?
+            .on_conflict_raw(conflict.clone())
+            .exec_with_returning(tx)
+            .await;
+        match inserted {
+            Ok(models) => landed.extend(models.iter().map(&key_and_id)),
+            // Every row of the chunk lost its race: nothing came back.
+            Err(error) if lost_insert_race(&error) => {}
+            Err(error) => return Err(map_scope_err(error)),
+        }
+    }
+    Ok(landed)
+}
+
 async fn insert_node_row(
     scope: &AccessScope,
     tx: &impl DBRunner,
@@ -1502,6 +1580,43 @@ async fn insert_phantom(
     }
 }
 
+/// What a new edge row carries besides its spec and writer.
+struct NewEdge<'a> {
+    key: String,
+    type_id: i32,
+    src: i64,
+    dst: i64,
+    payload: serde_json::Value,
+    declaring: Option<(&'a str, &'a str)>,
+    now: OffsetDateTime,
+}
+
+/// The row an edge is inserted as, by the item path and the bulk insert alike.
+fn new_edge_row(w: Writer<'_>, spec: &EdgeSpec, new: NewEdge<'_>) -> edge::ActiveModel {
+    let subject = w.subject;
+    edge::ActiveModel {
+        tenant_id: ActiveValue::Set(w.tenant),
+        id: ActiveValue::NotSet,
+        edge_key: ActiveValue::Set(new.key),
+        gts_edge_type_id: ActiveValue::Set(new.type_id),
+        src_node_id: ActiveValue::Set(new.src),
+        dst_node_id: ActiveValue::Set(new.dst),
+        discriminator: ActiveValue::Set(spec.discriminator.clone()),
+        payload: ActiveValue::Set(new.payload),
+        created_at: ActiveValue::Set(new.now),
+        updated_at: ActiveValue::Set(new.now),
+        deleted_at: ActiveValue::Set(None),
+        scope_attribute: ActiveValue::Set(new.declaring.map(|(attribute, _)| attribute.to_owned())),
+        scope_value: ActiveValue::Set(new.declaring.map(|(_, value)| value.to_owned())),
+        created_by_subject_id: ActiveValue::Set(subject.subject_id),
+        created_by_subject_type: ActiveValue::Set(subject.subject_type.clone()),
+        updated_by_subject_id: ActiveValue::Set(subject.subject_id),
+        updated_by_subject_type: ActiveValue::Set(subject.subject_type.clone()),
+        deleted_by_subject_id: ActiveValue::Set(None),
+        deleted_by_subject_type: ActiveValue::Set(None),
+    }
+}
+
 #[expect(
     clippy::too_many_arguments,
     reason = "one item of the edge phase over the transaction's working state; bundling it would name a struct for a single call site"
@@ -1516,7 +1631,7 @@ async fn upsert_edge(
     declaring: Option<(&str, &str)>,
     known: Known<edge::Model>,
 ) -> Result<ItemOutcome, GraphStoreError> {
-    let (tenant, scope, subject) = (w.tenant, w.scope, w.subject);
+    let (scope, subject) = (w.scope, w.subject);
     let edge_key = identity::derive_edge_key(info.uuid, spec);
     let now = OffsetDateTime::now_utc();
     let payload = spec
@@ -1538,27 +1653,19 @@ async fn upsert_edge(
     let current = if let Some(current) = existing {
         current
     } else {
-        let active = edge::ActiveModel {
-            tenant_id: ActiveValue::Set(tenant),
-            id: ActiveValue::NotSet,
-            edge_key: ActiveValue::Set(edge_key.clone()),
-            gts_edge_type_id: ActiveValue::Set(info.id),
-            src_node_id: ActiveValue::Set(src),
-            dst_node_id: ActiveValue::Set(dst),
-            discriminator: ActiveValue::Set(spec.discriminator.clone()),
-            payload: ActiveValue::Set(payload.clone()),
-            created_at: ActiveValue::Set(now),
-            updated_at: ActiveValue::Set(now),
-            deleted_at: ActiveValue::Set(None),
-            scope_attribute: ActiveValue::Set(declaring.map(|(attribute, _)| attribute.to_owned())),
-            scope_value: ActiveValue::Set(declaring.map(|(_, value)| value.to_owned())),
-            created_by_subject_id: ActiveValue::Set(subject.subject_id),
-            created_by_subject_type: ActiveValue::Set(subject.subject_type.clone()),
-            updated_by_subject_id: ActiveValue::Set(subject.subject_id),
-            updated_by_subject_type: ActiveValue::Set(subject.subject_type.clone()),
-            deleted_by_subject_id: ActiveValue::Set(None),
-            deleted_by_subject_type: ActiveValue::Set(None),
-        };
+        let active = new_edge_row(
+            w,
+            spec,
+            NewEdge {
+                key: edge_key.clone(),
+                type_id: info.id,
+                src,
+                dst,
+                payload: payload.clone(),
+                declaring,
+                now,
+            },
+        );
         // Two batches declaring one new edge both found no row, and the
         // second lost a unique violation on `(tenant_id, edge_key)` -- the
         // edge half of what `insert_node_row` settles for nodes (gears-rust
@@ -2346,6 +2453,95 @@ async fn write_nodes(
     let mut stored = stored_nodes(w.scope, tx, &carried_keys).await?;
     let mut seen = std::collections::BTreeSet::new();
 
+    // The nodes the up-front read found no row for are inserted together,
+    // in key order, before the item loop: one statement per thousand rows
+    // instead of one per node. Only a first occurrence qualifies, and only
+    // one the item path would insert without a question to ask -- no
+    // `expected_version` other than `Some(0)`, a registered type, a planned
+    // vector. A namespace is authorized once, before the rows that name it.
+    // Whatever does not qualify, or lost its key to a concurrent batch, is
+    // written by the item loop as before.
+    let fresh: BTreeMap<String, i64> = {
+        let now = OffsetDateTime::now_utc();
+        let mut first = std::collections::BTreeSet::new();
+        let mut authorized = std::collections::BTreeSet::new();
+        let mut rows = Vec::new();
+        for step in &steps {
+            let NodeStep::Node(index) = *step else {
+                continue;
+            };
+            let spec = &request.nodes[index];
+            if !first.insert(spec.node_key.as_str())
+                || stored.contains_key(&spec.node_key)
+                || !matches!(spec.expected_version, None | Some(0))
+            {
+                continue;
+            }
+            let (Some(info), Some(decided)) =
+                (types.get(&spec.type_id), embedding.nodes.get(index))
+            else {
+                continue;
+            };
+            let Ok(namespaced) =
+                ownership::namespace_of(info.family.as_deref(), spec.payload.as_ref())
+            else {
+                continue;
+            };
+            let namespace = match namespaced {
+                ownership::Namespaced::None => None,
+                ownership::Namespaced::Under(namespace) => {
+                    if authorized.insert(namespace.to_owned()) {
+                        super::namespaces::authorize_write(
+                            w.tenant,
+                            w.scope,
+                            tx,
+                            namespace,
+                            &w.subject.principal(),
+                        )
+                        .await?;
+                    }
+                    Some(namespace.to_owned())
+                }
+            };
+            rows.push(new_node_row(
+                w,
+                spec,
+                info,
+                NewNode {
+                    name: spec.name.clone().unwrap_or_default(),
+                    payload: spec
+                        .payload
+                        .clone()
+                        .unwrap_or_else(|| serde_json::json!({})),
+                    search_text: compose_search_text(
+                        spec.name.as_deref(),
+                        spec.payload.as_ref(),
+                        &info.full_text_search,
+                    ),
+                    vector: plan_vector(
+                        None,
+                        PlannedVector {
+                            decided,
+                            active_epoch: embedding.epoch,
+                        },
+                    ),
+                    namespace,
+                    now,
+                },
+            ));
+        }
+        insert_new_rows::<node::Entity>(
+            w.scope,
+            tx,
+            rows,
+            OnConflict::columns([node::Column::TenantId, node::Column::NodeKey])
+                .do_nothing()
+                .to_owned(),
+            |row| (row.node_key.clone(), row.id),
+        )
+        .await?
+    };
+
     let mut changed = false;
     let mut outcomes: Vec<Option<ItemOutcome>> = vec![None; request.nodes.len()];
     for step in steps {
@@ -2381,6 +2577,21 @@ async fn write_nodes(
                 "type is not registered".into(),
             )
         })?;
+        // Inserted by the bulk statement above: its first occurrence is done.
+        if !seen.contains(spec.node_key.as_str())
+            && let Some(&id) = fresh.get(&spec.node_key)
+        {
+            seen.insert(spec.node_key.clone());
+            node_ids.insert(
+                spec.node_key.clone(),
+                Endpoint {
+                    id,
+                    type_id: info.id,
+                },
+            );
+            outcomes[index] = Some(ItemOutcome::Inserted);
+            continue;
+        }
         // Index-aligned with the request's nodes, by the port's contract. A
         // missing entry would silently unembed a node, so it is a store
         // failure rather than a default.
@@ -2532,6 +2743,14 @@ async fn write_edges(
     let mut seen = std::collections::BTreeSet::new();
     let mut endpoint_type_cache = EndpointTypeCache::default();
 
+    let declaring = request
+        .replace_scope
+        .as_ref()
+        .map(|replace| (replace.attribute.as_str(), replace.value.as_str()));
+
+    // First pass, reads only: every edge's endpoints resolved and its endpoint
+    // constraints checked, in key order.
+    let mut checked: Vec<(String, usize, Endpoint, Endpoint)> = Vec::with_capacity(order.len());
     for (edge_key, index) in order {
         let spec = &request.edges[index];
         if w.budget.is_exhausted() {
@@ -2595,6 +2814,73 @@ async fn write_edges(
             }
         }
 
+        checked.push((edge_key, index, src, dst));
+    }
+
+    // The edges the up-front read found no row for, inserted together in key
+    // order, as `write_nodes` inserts new nodes: first occurrences only. A key
+    // a concurrent batch took in between is written by the item pass below.
+    let fresh: BTreeMap<String, i64> = {
+        let now = OffsetDateTime::now_utc();
+        let mut first = std::collections::BTreeSet::new();
+        let mut rows = Vec::new();
+        for (edge_key, index, src, dst) in &checked {
+            if !first.insert(edge_key.as_str()) || stored.contains_key(edge_key) {
+                continue;
+            }
+            let spec = &request.edges[*index];
+            let Some(info) = types.get(&spec.type_id) else {
+                continue;
+            };
+            rows.push(new_edge_row(
+                w,
+                spec,
+                NewEdge {
+                    key: edge_key.clone(),
+                    type_id: info.id,
+                    src: src.id,
+                    dst: dst.id,
+                    payload: spec
+                        .payload
+                        .clone()
+                        .unwrap_or_else(|| serde_json::json!({})),
+                    declaring,
+                    now,
+                },
+            ));
+        }
+        insert_new_rows::<edge::Entity>(
+            w.scope,
+            tx,
+            rows,
+            OnConflict::columns([edge::Column::TenantId, edge::Column::EdgeKey])
+                .do_nothing()
+                .to_owned(),
+            |row| (row.edge_key.clone(), row.id),
+        )
+        .await?
+    };
+
+    // Second pass, the writes left: updates, repeats and lost races, in key
+    // order.
+    for (edge_key, index, src, dst) in checked {
+        if w.budget.is_exhausted() {
+            return Err(GraphStoreError::Deadline);
+        }
+        if !seen.contains(edge_key.as_str()) && fresh.contains_key(&edge_key) {
+            seen.insert(edge_key);
+            outcomes[index] = Some(ItemOutcome::Inserted);
+            continue;
+        }
+        let spec = &request.edges[index];
+        let info = types.get(&spec.type_id).ok_or_else(|| {
+            item_error(
+                index,
+                ItemFamily::Edge,
+                &spec.type_id,
+                "type is not registered".into(),
+            )
+        })?;
         outcomes[index] = Some(
             upsert_edge(
                 w,
@@ -2603,10 +2889,7 @@ async fn write_edges(
                 info,
                 src.id,
                 dst.id,
-                request
-                    .replace_scope
-                    .as_ref()
-                    .map(|replace| (replace.attribute.as_str(), replace.value.as_str())),
+                declaring,
                 known(&mut stored, &mut seen, &edge_key),
             )
             .await?,

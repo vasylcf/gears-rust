@@ -2596,3 +2596,114 @@ async fn a_count_applies_a_column_filter_as_the_listing_does() {
         .expect("the count answers");
     assert_eq!((counted.count, counted.capped), (2, false));
 }
+
+/// A key another batch inserts between this batch's up-front read and its
+/// bulk insert is written on the item path, as an update of that row
+/// (gears-rust #5040). The other batch is a plain transaction holding an
+/// uncommitted row under the key: the bulk insert waits on it, `DO NOTHING`
+/// skips it once it commits, and `RETURNING` leaves it out -- which is the
+/// only thing that tells the store the key was lost.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_key_lost_to_another_batch_during_the_bulk_insert_lands_as_an_update() {
+    use graph_storage_sdk::models::ItemOutcome;
+    use sea_orm::{ConnectionTrait as _, TransactionTrait as _};
+
+    let Some(stand) = stand().await else {
+        return;
+    };
+    let tenant = tenant_on(&stand).await;
+    let scope = AccessScope::for_tenant(tenant);
+    let ctx = conformance::ctx(tenant, &scope, None);
+    stand
+        .store
+        .register_types(&ctx, conformance::ontology_batch())
+        .await
+        .expect("the ontology registers");
+
+    let raw = sea_orm::Database::connect(&stand.dsn)
+        .await
+        .expect("a plain connection for the other batch");
+    let holder = raw.begin().await.expect("the holder begins");
+    holder
+        .execute_unprepared(&format!(
+            "INSERT INTO node (tenant_id, node_key, gts_node_type_id, name) \
+             SELECT '{tenant}', 'race-k', id, 'held' FROM gts_type \
+             WHERE tenant_id = '{tenant}' AND gts_type_id = '{}'",
+            conformance::OWNED
+        ))
+        .await
+        .expect("the holder inserts the key and keeps it uncommitted");
+
+    let writer = {
+        let store = Arc::clone(&stand.store);
+        tokio::spawn(async move {
+            let scope = AccessScope::for_tenant(tenant);
+            let ctx = conformance::ctx(tenant, &scope, None);
+            let mut request = conformance::batch(
+                vec![
+                    conformance::node("race-a", "a"),
+                    conformance::node("race-k", "from the batch"),
+                    conformance::node("race-z", "z"),
+                ],
+                vec![conformance::edge("race-a", "race-k")],
+            );
+            request.options.report_per_item = true;
+            conformance::ingest_batch(store.as_ref(), &ctx, request).await
+        })
+    };
+
+    // Commit only once the bulk insert waits on the held key.
+    let waiting = sea_orm::Statement::from_string(
+        sea_orm::DatabaseBackend::Postgres,
+        "SELECT count(*)::bigint AS n FROM pg_stat_activity \
+         WHERE wait_event_type = 'Lock' AND datname = current_database()"
+            .to_owned(),
+    );
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
+    loop {
+        let row = raw
+            .query_one_raw(waiting.clone())
+            .await
+            .expect("the activity view reads")
+            .expect("a count is one row");
+        if row.try_get::<i64>("", "n").expect("the count is a number") > 0 {
+            break;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the bulk insert never waited on the held key"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    holder.commit().await.expect("the holder commits");
+
+    let outcome = writer
+        .await
+        .expect("the writer task does not panic")
+        .expect("the batch lands over the other batch's row");
+    assert_eq!(
+        outcome.per_item_nodes,
+        Some(vec![
+            ItemOutcome::Inserted,
+            ItemOutcome::Updated,
+            ItemOutcome::Inserted
+        ]),
+        "the lost key is an update, the others are inserts"
+    );
+    let view = stand
+        .store
+        .get_node(&ctx, &"race-k".to_owned(), 10)
+        .await
+        .expect("the key reads");
+    assert_eq!(view.name.as_deref(), Some("from the batch"));
+    assert_eq!(
+        view.envelope.version,
+        Some(2),
+        "the held row, then the batch"
+    );
+    assert_eq!(
+        view.adjacency.len(),
+        1,
+        "the edge is attached to the row that won, not to a row that was never inserted"
+    );
+}
