@@ -215,4 +215,26 @@ pub trait GraphStorageClientV1: Send + Sync {
 
     /// The caller-visible `(source_epoch, graph_revision)` identity.
     async fn revision(&self, ctx: &SecurityContext) -> Result<GraphRevision, CanonicalError>;
+
+    // --- tenancy ----------------------------------------------------------
+
+    /// A client whose every call is about `tenant` rather than the caller's
+    /// own tenant (gears-rust #5623).
+    ///
+    /// For a caller that acts in tenants it is not a subject of, such as a
+    /// service with one platform-wide identity: the PDP is asked whether the
+    /// caller may act in `tenant`, a refusal is `not_found` on every method
+    /// (the same answer as an unknown tenant), and a granted call reads and
+    /// writes `tenant`'s rows alone, reads included -- no answer mixes two
+    /// tenants. The acting subject recorded on rows stays the caller. Calling
+    /// `in_tenant` on a scoped client replaces its tenant.
+    ///
+    /// The provided implementation refuses every call as `unimplemented`, so
+    /// an implementation that does not support a target tenant -- a test
+    /// double, say -- keeps compiling and never answers for the caller's own
+    /// tenant when another one was asked for.
+    fn in_tenant(&self, tenant: uuid::Uuid) -> std::sync::Arc<dyn GraphStorageClientV1> {
+        let _ = tenant;
+        std::sync::Arc::new(crate::client_no_target::NoTargetTenant)
+    }
 }

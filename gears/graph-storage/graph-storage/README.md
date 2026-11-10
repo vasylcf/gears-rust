@@ -114,6 +114,14 @@ Each is the shipped behaviour, with the contract that fixes it.
   upgrade does not fail the producer's unchanged run); a changed schema is
   analyzed by this build. Registering one type at a time is a valid fallback,
   not a workaround.
+- **A service acting in other tenants names the tenant per call**
+  (`fr-access-control`, gears-rust #5623): `graph.in_tenant(t)` in process,
+  `?tenant=<uuid>` over REST. The PDP decides whether the caller may act in
+  `t`; a refusal is `404`, the same answer as an unknown tenant, and a granted
+  call reads and writes `t`'s rows alone, reads included. Types are per
+  tenant, so a producer registers its types in each tenant it writes to. The
+  acting subject recorded on rows is the caller. DESIGN § Authorization Model
+  states the trade-off for calls made on behalf of a signed-in user.
 - **`expected_version` is the one conditional write.** A stored version is 1 or
   more and advances on every update; `Some(n)` requires exactly `n` and is a
   conflict otherwise, including when no node is stored under the key.
