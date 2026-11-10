@@ -2592,3 +2592,49 @@ async fn a_count_applies_a_column_filter_as_the_listing_does() {
         .expect("the count answers");
     assert_eq!((counted.count, counted.capped), (2, false));
 }
+
+/// A listing whose statement the database fails is the server's failure, not
+/// the caller's (gears-rust #5789). The pager reports it as an `OData` `Db`
+/// error, which the store used to answer as `InvalidQuery` -- a 400 that tells
+/// a client to fix a request that was fine and never to retry it.
+///
+/// The failure is made deterministic rather than hoped for: a plain
+/// connection holds `node` under `ACCESS EXCLUSIVE`, and the listing runs on a
+/// pool whose `lock_timeout` makes the server refuse to wait for it.
+#[tokio::test]
+async fn a_listing_the_database_fails_is_unavailable_not_an_invalid_query() {
+    use sea_orm::{ConnectionTrait as _, TransactionTrait as _};
+    let Some(stand) = stand().await else {
+        return;
+    };
+    let tenant = tenant_on(&stand).await;
+    let scope = AccessScope::for_tenant(tenant);
+    let ctx = conformance::ctx(tenant, &scope, None);
+
+    let raw = sea_orm::Database::connect(&stand.dsn)
+        .await
+        .expect("a plain connection to hold the table");
+    let holder = raw.begin().await.expect("the holder begins");
+    holder
+        .execute_unprepared("LOCK TABLE node IN ACCESS EXCLUSIVE MODE")
+        .await
+        .expect("the holder locks the node table");
+
+    let impatient = store_with(&stand, "-c lock_timeout=200").await;
+    let error = impatient
+        .project_table(
+            &ctx,
+            graph_storage_sdk::models::ProjectionRequest::default(),
+        )
+        .await
+        .expect_err("the listing cannot read a table it may not lock");
+    holder.rollback().await.expect("the holder lets go");
+
+    assert!(
+        matches!(
+            error,
+            graph_storage_sdk::plugin_api::GraphStoreError::Unavailable { .. }
+        ),
+        "a database failure is the server's, not an invalid query: {error:?}"
+    );
+}

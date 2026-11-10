@@ -33,7 +33,16 @@ use crate::infra::store::{PgGraphStore, map_db_error, map_scope_err};
 /// a caller who named a field that does not exist sends them the wrong way,
 /// and the two carry different canonical categories. Only the page-size
 /// variant is genuinely `out_of_range`.
-fn map_odata_err(error: toolkit_odata::Error) -> GraphStoreError {
+///
+/// Nor is a failed server a malformed query (gears-rust #5789): the pager
+/// runs the listing's statements, so a database that did not answer comes
+/// back through this binding as `Db`, and answering it as `InvalidQuery` told
+/// the caller to fix a request that was fine and not to retry it. It is
+/// `Unavailable`, worded and logged as every other database failure of the
+/// store (`map_db_error`), so the driver's text stays in the log. The match
+/// names every variant, so a new one is classified where it is added rather
+/// than defaulting to the caller's fault.
+fn map_odata_err(error: &toolkit_odata::Error) -> GraphStoreError {
     use toolkit_odata::Error as E;
     match error {
         E::InvalidLimit => GraphStoreError::LimitExceeded {
@@ -45,9 +54,28 @@ fn map_odata_err(error: toolkit_odata::Error) -> GraphStoreError {
         E::InvalidFilter(_) | E::InvalidOrderByField(_) => GraphStoreError::InvalidQuery {
             what: format!("{error}; the projection accepts {}", declared_fields()),
         },
-        other => GraphStoreError::InvalidQuery {
-            what: other.to_string(),
+        E::OrderMismatch
+        | E::FilterMismatch
+        | E::InvalidCursor
+        | E::OrderWithCursor
+        | E::CursorInvalidBase64
+        | E::CursorInvalidJson
+        | E::CursorInvalidVersion
+        | E::CursorInvalidKeys
+        | E::CursorInvalidFields
+        | E::CursorInvalidDirection => GraphStoreError::InvalidQuery {
+            what: error.to_string(),
         },
+        E::Db(_) => {
+            tracing::warn!(
+                error = %crate::domain::diagnostics::logged(error),
+                "the database did not answer a listing"
+            );
+            GraphStoreError::Unavailable {
+                reason: "the database did not answer; the reason is in the gear's log".to_owned(),
+            }
+        }
+        E::ParsingUnavailable(_) => GraphStoreError::Internal(error.to_string()),
     }
 }
 
@@ -694,7 +722,7 @@ pub async fn project_table(
         |model| model,
     )
     .await
-    .map_err(map_odata_err)?;
+    .map_err(|error| map_odata_err(&error))?;
 
     rows_to_page(ctx, &conn, page.items, page.page_info).await
 }
@@ -891,7 +919,7 @@ async fn rows_to_page(
 
 #[cfg(test)]
 mod tests {
-    use super::{count_bound, node, stored_vector_columns};
+    use super::{count_bound, map_odata_err, node, stored_vector_columns};
 
     /// A count is bounded in the database: the statement it counts over
     /// carries `LIMIT max + 1`. The answer would be the same without it --
@@ -941,5 +969,27 @@ mod tests {
                 "embedding state needs `{needed}`: {sql}"
             );
         }
+    }
+
+    /// The server's failures are not the caller's (gears-rust #5789): a
+    /// database error is `Unavailable` and carries none of the driver's text,
+    /// while a bad cursor stays an invalid query.
+    #[test]
+    fn a_database_error_in_a_listing_is_unavailable() {
+        use graph_storage_sdk::plugin_api::GraphStoreError as G;
+        use toolkit_odata::Error as E;
+
+        match map_odata_err(&E::Db("connection reset by peer".to_owned())) {
+            G::Unavailable { reason } => assert!(!reason.contains("reset"), "{reason}"),
+            other => panic!("a database error is unavailable: {other:?}"),
+        }
+        assert!(matches!(
+            map_odata_err(&E::ParsingUnavailable("x")),
+            G::Internal(_)
+        ));
+        assert!(matches!(
+            map_odata_err(&E::InvalidCursor),
+            G::InvalidQuery { .. }
+        ));
     }
 }
