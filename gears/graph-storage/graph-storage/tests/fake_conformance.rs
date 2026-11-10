@@ -103,6 +103,12 @@ async fn a_stale_vector_stops_ranking_but_the_node_stays() {
 }
 
 #[tokio::test]
+async fn a_key_carried_twice_is_written_twice_in_request_order() {
+    conformance::a_key_carried_twice_is_written_twice_in_request_order(&store(), Uuid::now_v7())
+        .await;
+}
+
+#[tokio::test]
 async fn only_the_active_epoch_ranks() {
     conformance::only_the_active_epoch_ranks(&store(), Uuid::now_v7()).await;
 }

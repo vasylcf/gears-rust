@@ -429,6 +429,10 @@ pg_case!(
     conformance::a_stale_vector_stops_ranking_but_the_node_stays
 );
 pg_case!(
+    a_key_carried_twice_is_written_twice_in_request_order,
+    conformance::a_key_carried_twice_is_written_twice_in_request_order
+);
+pg_case!(
     only_the_active_epoch_ranks,
     conformance::only_the_active_epoch_ranks
 );

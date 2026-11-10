@@ -696,6 +696,138 @@ async fn endpoint_types(
         .collect())
 }
 
+/// How many keys one prefetch statement carries: far below the server's bind
+/// parameter limit, and few statements for any batch the admission bounds
+/// allow.
+const PREFETCH_CHUNK: usize = 1_000;
+
+/// The live nodes named by `keys`, read in one statement per
+/// [`PREFETCH_CHUNK`] keys rather than one per key (gears-rust #5040).
+async fn lookup_endpoints(
+    scope: &AccessScope,
+    tx: &impl DBRunner,
+    keys: &[&str],
+) -> Result<BTreeMap<String, Endpoint>, GraphStoreError> {
+    let mut found = BTreeMap::new();
+    for chunk in keys.chunks(PREFETCH_CHUNK) {
+        let rows = node::Entity::find()
+            .secure()
+            .scope_with(scope)
+            .filter(
+                Condition::all()
+                    .add(node::Column::NodeKey.is_in(chunk.iter().map(|key| (*key).to_owned()))),
+            )
+            .filter(Condition::all().add(node::Column::DeletedAt.is_null()))
+            .project_all(tx, |query| {
+                node_typed_columns(query).into_model::<NodeTyped>()
+            })
+            .await
+            .map_err(map_scope_err)?;
+        for row in rows {
+            found.insert(
+                row.node_key,
+                Endpoint {
+                    id: row.id,
+                    type_id: row.gts_node_type_id,
+                },
+            );
+        }
+    }
+    Ok(found)
+}
+
+/// The stored rows, tombstoned ones included, of the nodes a batch carries,
+/// keyed by node key: what `upsert_node` would read one key at a time.
+async fn stored_nodes(
+    scope: &AccessScope,
+    tx: &impl DBRunner,
+    keys: &[&str],
+) -> Result<BTreeMap<String, node::Model>, GraphStoreError> {
+    let mut found = BTreeMap::new();
+    for chunk in keys.chunks(PREFETCH_CHUNK) {
+        let rows = node::Entity::find()
+            .secure()
+            .scope_with(scope)
+            .filter(
+                Condition::all()
+                    .add(node::Column::NodeKey.is_in(chunk.iter().map(|key| (*key).to_owned()))),
+            )
+            .all(tx)
+            .await
+            .map_err(map_scope_err)?;
+        found.extend(rows.into_iter().map(|row| (row.node_key.clone(), row)));
+    }
+    Ok(found)
+}
+
+/// The stored rows, tombstoned ones included, of the edges a batch carries,
+/// keyed by edge key: what `upsert_edge` would read one key at a time.
+async fn stored_edges(
+    scope: &AccessScope,
+    tx: &impl DBRunner,
+    keys: &[&str],
+) -> Result<BTreeMap<String, edge::Model>, GraphStoreError> {
+    let mut found = BTreeMap::new();
+    for chunk in keys.chunks(PREFETCH_CHUNK) {
+        let rows = edge::Entity::find()
+            .secure()
+            .scope_with(scope)
+            .filter(
+                Condition::all()
+                    .add(edge::Column::EdgeKey.is_in(chunk.iter().map(|key| (*key).to_owned()))),
+            )
+            .all(tx)
+            .await
+            .map_err(map_scope_err)?;
+        found.extend(rows.into_iter().map(|row| (row.edge_key.clone(), row)));
+    }
+    Ok(found)
+}
+
+/// What a prefetch answered for one item of the batch.
+///
+/// `Some(row)` is the prefetched answer, absent included; `None` means "read
+/// it now", which is what a key the batch carries a second time gets, so the
+/// second occurrence sees what the first one wrote.
+type Known<T> = Option<Option<T>>;
+
+/// Take the prefetched answer for `key` on its first occurrence in the batch.
+fn known<T>(
+    stored: &mut BTreeMap<String, T>,
+    seen: &mut std::collections::BTreeSet<String>,
+    key: &str,
+) -> Known<T> {
+    seen.insert(key.to_owned()).then(|| stored.remove(key))
+}
+
+/// The types of a batch's edge endpoints, read once per type rather than once
+/// per edge: interned types are not changed by an ingest, so an answer stays
+/// true for the rest of the transaction.
+#[derive(Default)]
+struct EndpointTypeCache(BTreeMap<i32, (String, Option<String>)>);
+
+impl EndpointTypeCache {
+    async fn resolve(
+        &mut self,
+        scope: &AccessScope,
+        tx: &impl DBRunner,
+        ids: &[i32],
+    ) -> Result<BTreeMap<i32, (String, Option<String>)>, GraphStoreError> {
+        let missing: Vec<i32> = ids
+            .iter()
+            .copied()
+            .filter(|id| !self.0.contains_key(id))
+            .collect();
+        if !missing.is_empty() {
+            self.0.extend(endpoint_types(scope, tx, &missing).await?);
+        }
+        Ok(ids
+            .iter()
+            .filter_map(|id| self.0.get(id).map(|meta| (*id, meta.clone())))
+            .collect())
+    }
+}
+
 /// Revalidate every live edge incident to a node that has just become
 /// concrete.
 ///
@@ -875,15 +1007,19 @@ async fn upsert_node(
     info: &TypeInfo,
     index: usize,
     planned: PlannedVector<'_>,
+    known: Known<node::Model>,
 ) -> Result<(i64, ItemOutcome), GraphStoreError> {
     let (tenant, scope, subject) = (w.tenant, w.scope, w.subject);
-    let existing = node::Entity::find()
-        .secure()
-        .scope_with(scope)
-        .filter(Condition::all().add(node::Column::NodeKey.eq(spec.node_key.clone())))
-        .one(tx)
-        .await
-        .map_err(map_scope_err)?;
+    let existing = match known {
+        Some(row) => row,
+        None => node::Entity::find()
+            .secure()
+            .scope_with(scope)
+            .filter(Condition::all().add(node::Column::NodeKey.eq(spec.node_key.clone())))
+            .one(tx)
+            .await
+            .map_err(map_scope_err)?,
+    };
 
     let payload = spec
         .payload
@@ -1366,6 +1502,10 @@ async fn insert_phantom(
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "one item of the edge phase over the transaction's working state; bundling it would name a struct for a single call site"
+)]
 async fn upsert_edge(
     w: Writer<'_>,
     tx: &impl DBRunner,
@@ -1374,6 +1514,7 @@ async fn upsert_edge(
     src: i64,
     dst: i64,
     declaring: Option<(&str, &str)>,
+    known: Known<edge::Model>,
 ) -> Result<ItemOutcome, GraphStoreError> {
     let (tenant, scope, subject) = (w.tenant, w.scope, w.subject);
     let edge_key = identity::derive_edge_key(info.uuid, spec);
@@ -1383,13 +1524,16 @@ async fn upsert_edge(
         .clone()
         .unwrap_or_else(|| serde_json::json!({}));
 
-    let existing = edge::Entity::find()
-        .secure()
-        .scope_with(scope)
-        .filter(Condition::all().add(edge::Column::EdgeKey.eq(edge_key.clone())))
-        .one(tx)
-        .await
-        .map_err(map_scope_err)?;
+    let existing = match known {
+        Some(row) => row,
+        None => edge::Entity::find()
+            .secure()
+            .scope_with(scope)
+            .filter(Condition::all().add(edge::Column::EdgeKey.eq(edge_key.clone())))
+            .one(tx)
+            .await
+            .map_err(map_scope_err)?,
+    };
 
     let current = if let Some(current) = existing {
         current
@@ -2189,6 +2333,19 @@ async fn write_nodes(
     // Stable, so a key the batch carries twice is written in request order.
     steps.sort_by(|a, b| a.key(request).cmp(b.key(request)));
 
+    // What the item loop below would read one key at a time, read up front
+    // in a few statements (gears-rust #5040): the live nodes the edges name
+    // without carrying, and the stored rows of the nodes carried. These reads
+    // take no lock, as the per-key reads they replace took none; a row a
+    // concurrent batch writes in between is met by the same lost-race paths
+    // as before. A key not found as a live endpoint here still takes the
+    // per-key path, tombstone check and phantom included.
+    let external: Vec<&str> = named.iter().copied().collect();
+    node_ids.extend(lookup_endpoints(w.scope, tx, &external).await?);
+    let carried_keys: Vec<&str> = carried.iter().copied().collect();
+    let mut stored = stored_nodes(w.scope, tx, &carried_keys).await?;
+    let mut seen = std::collections::BTreeSet::new();
+
     let mut changed = false;
     let mut outcomes: Vec<Option<ItemOutcome>> = vec![None; request.nodes.len()];
     for step in steps {
@@ -2244,6 +2401,7 @@ async fn write_nodes(
                 decided,
                 active_epoch: embedding.epoch,
             },
+            known(&mut stored, &mut seen, &spec.node_key),
         )
         .await?;
         node_ids.insert(
@@ -2363,7 +2521,18 @@ async fn write_edges(
     order.sort();
     let mut outcomes: Vec<Option<ItemOutcome>> = vec![None; request.edges.len()];
 
-    for (_, index) in order {
+    // The stored edges, read up front as `write_nodes` reads the nodes, and
+    // the endpoint types, read once per type rather than once per edge.
+    let edge_keys: Vec<&str> = order
+        .iter()
+        .map(|(key, _)| key.as_str())
+        .filter(|key| !key.is_empty())
+        .collect();
+    let mut stored = stored_edges(w.scope, tx, &edge_keys).await?;
+    let mut seen = std::collections::BTreeSet::new();
+    let mut endpoint_type_cache = EndpointTypeCache::default();
+
+    for (edge_key, index) in order {
         let spec = &request.edges[index];
         if w.budget.is_exhausted() {
             return Err(GraphStoreError::Deadline);
@@ -2398,7 +2567,9 @@ async fn write_edges(
         // Endpoint constraints, checked here because this is the only place
         // both endpoints are resolved and still inside the ingest transaction,
         // so an endpoint's type cannot change between the check and the commit.
-        let resolved = endpoint_types(w.scope, tx, &[src.type_id, dst.type_id]).await?;
+        let resolved = endpoint_type_cache
+            .resolve(w.scope, tx, &[src.type_id, dst.type_id])
+            .await?;
         for (end, endpoint, patterns, pointer) in [
             (&spec.src_node_key, src, &info.src_types, "/src_node_key"),
             (&spec.dst_node_key, dst, &info.dst_types, "/dst_node_key"),
@@ -2436,6 +2607,7 @@ async fn write_edges(
                     .replace_scope
                     .as_ref()
                     .map(|replace| (replace.attribute.as_str(), replace.value.as_str())),
+                known(&mut stored, &mut seen, &edge_key),
             )
             .await?,
         );
