@@ -2904,3 +2904,334 @@ async fn an_edge_lost_to_another_batch_during_the_bulk_insert_lands_as_an_update
         "the batch's write is the one that stands"
     );
 }
+
+/// The ontology plus an edge type admitting only owned endpoints and a
+/// reference node type -- a concrete type that edge type refuses.
+async fn register_constrained_types(
+    stand: &Stand,
+    ctx: &graph_storage_sdk::plugin_api::StoreCtx<'_>,
+) {
+    let mut batch = conformance::ontology_batch();
+    batch.push(graph_storage_sdk::models::TypeRegistration {
+        type_id: conformance::OWNED_ONLY.to_owned(),
+        schema: serde_json::json!({
+            "$id": format!("gts://{}", conformance::OWNED_ONLY),
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "x-gts-traits": {
+                "src_types": [conformance::OWNED_FAMILY],
+                "dst_types": [conformance::OWNED_FAMILY]
+            },
+            "type": "object",
+            "allOf": [{ "$ref": "gts://gts.cf.core.graph.edge.v1~cf.core.graph.static_edge.v1~" }]
+        }),
+    });
+    batch.push(graph_storage_sdk::models::TypeRegistration {
+        type_id: conformance::REFERENCE.to_owned(),
+        schema: serde_json::json!({
+            "$id": format!("gts://{}", conformance::REFERENCE),
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "allOf": [{ "$ref": "gts://gts.cf.core.graph.node.v1~cf.core.graph.reference_node.v1~" }]
+        }),
+    });
+    stand
+        .store
+        .register_types(ctx, batch)
+        .await
+        .expect("the ontology registers");
+}
+
+/// Return once some session of the stand's database waits on a row lock.
+async fn until_a_session_waits_on_a_lock(raw: &sea_orm::DatabaseConnection, what: &str) {
+    use sea_orm::ConnectionTrait as _;
+    let waiting = sea_orm::Statement::from_string(
+        sea_orm::DatabaseBackend::Postgres,
+        "SELECT count(*)::bigint AS n FROM pg_stat_activity \
+         WHERE wait_event_type = 'Lock' AND datname = current_database()"
+            .to_owned(),
+    );
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
+    loop {
+        let row = raw
+            .query_one_raw(waiting.clone())
+            .await
+            .expect("the activity view reads")
+            .expect("a count is one row");
+        if row.try_get::<i64>("", "n").expect("the count is a number") > 0 {
+            return;
+        }
+        assert!(tokio::time::Instant::now() < deadline, "{what}");
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+}
+
+/// A phantom the batch materializes, which another batch materializes as
+/// a different type while this one waits on an earlier key, is refused as
+/// the type change it now is -- not overwritten from the batch's up-front
+/// read, which still saw the phantom (gears-rust #5864, a review finding).
+///
+/// The other batch is a plain transaction that holds the earlier key and
+/// changes the phantom's type before it commits, which is what a
+/// materializing batch holding that key does.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_phantom_materialized_meanwhile_is_not_overwritten_from_the_prefetch() {
+    use sea_orm::{ConnectionTrait as _, TransactionTrait as _};
+    let Some(stand) = stand().await else {
+        return;
+    };
+    let tenant = tenant_on(&stand).await;
+    let scope = AccessScope::for_tenant(tenant);
+    let ctx = conformance::ctx(tenant, &scope, None);
+    register_constrained_types(&stand, &ctx).await;
+    conformance::ingest_batch(
+        stand.store.as_ref(),
+        &ctx,
+        conformance::batch(
+            vec![conformance::node("mat-a", "a")],
+            vec![conformance::edge("mat-a", "mat-z")],
+        ),
+    )
+    .await
+    .expect("the node and a phantom endpoint commit");
+
+    let raw = sea_orm::Database::connect(&stand.dsn)
+        .await
+        .expect("a plain connection for the other batch");
+    let holder = raw.begin().await.expect("the holder begins");
+    holder
+        .execute_unprepared(&format!(
+            "UPDATE node SET name = 'held' WHERE tenant_id = '{tenant}' AND node_key = 'mat-a'"
+        ))
+        .await
+        .expect("the holder takes the earlier key");
+
+    let writer = {
+        let store = Arc::clone(&stand.store);
+        tokio::spawn(async move {
+            let scope = AccessScope::for_tenant(tenant);
+            let ctx = conformance::ctx(tenant, &scope, None);
+            conformance::ingest_batch(
+                store.as_ref(),
+                &ctx,
+                conformance::batch(
+                    vec![
+                        conformance::node("mat-a", "from the batch"),
+                        conformance::node("mat-z", "materialized by the batch"),
+                    ],
+                    Vec::new(),
+                ),
+            )
+            .await
+        })
+    };
+    until_a_session_waits_on_a_lock(&raw, "the batch never waited on the earlier key").await;
+    holder
+        .execute_unprepared(&format!(
+            "UPDATE node SET gts_node_type_id = (SELECT id FROM gts_type \
+             WHERE tenant_id = '{tenant}' AND gts_type_id = '{}'), version = version + 1 \
+             WHERE tenant_id = '{tenant}' AND node_key = 'mat-z'",
+            conformance::REFERENCE
+        ))
+        .await
+        .expect("the holder materializes the phantom as another type");
+    holder.commit().await.expect("the holder commits");
+
+    let outcome = writer.await.expect("the writer task does not panic");
+    assert!(
+        matches!(
+            outcome,
+            Err(graph_storage_sdk::plugin_api::GraphStoreError::Conflict { .. })
+        ),
+        "the batch meets a concrete node of another type: {outcome:?}"
+    );
+    let row = raw
+        .query_one_raw(sea_orm::Statement::from_string(
+            sea_orm::DatabaseBackend::Postgres,
+            format!(
+                "SELECT t.gts_type_id FROM node n JOIN gts_type t ON t.id = n.gts_node_type_id \
+                 WHERE n.tenant_id = '{tenant}' AND n.node_key = 'mat-z'"
+            ),
+        ))
+        .await
+        .expect("the type reads")
+        .expect("the node is there");
+    assert_eq!(
+        row.try_get::<String>("", "gts_type_id").expect("a type id"),
+        conformance::REFERENCE,
+        "the other batch's type stands"
+    );
+}
+
+/// An edge to a phantom endpoint that another batch materializes, while
+/// this one waits on an earlier key, into a type the edge does not admit is
+/// refused -- not admitted on the up-front read's phantom (gears-rust #5864,
+/// a review finding). The endpoint is then held under `FOR SHARE` until commit, so
+/// the materialization cannot slip in after the check either.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_endpoint_materialized_meanwhile_is_checked_as_its_new_type() {
+    use sea_orm::{ConnectionTrait as _, TransactionTrait as _};
+    let Some(stand) = stand().await else {
+        return;
+    };
+    let tenant = tenant_on(&stand).await;
+    let scope = AccessScope::for_tenant(tenant);
+    let ctx = conformance::ctx(tenant, &scope, None);
+    register_constrained_types(&stand, &ctx).await;
+    conformance::ingest_batch(
+        stand.store.as_ref(),
+        &ctx,
+        conformance::batch(
+            vec![conformance::node("lnk-a", "a")],
+            vec![conformance::edge("lnk-a", "lnk-z")],
+        ),
+    )
+    .await
+    .expect("the node and a phantom endpoint commit");
+
+    let raw = sea_orm::Database::connect(&stand.dsn)
+        .await
+        .expect("a plain connection for the other batch");
+    let holder = raw.begin().await.expect("the holder begins");
+    holder
+        .execute_unprepared(&format!(
+            "UPDATE node SET name = 'held' WHERE tenant_id = '{tenant}' AND node_key = 'lnk-a'"
+        ))
+        .await
+        .expect("the holder takes the earlier key");
+
+    let writer = {
+        let store = Arc::clone(&stand.store);
+        tokio::spawn(async move {
+            let scope = AccessScope::for_tenant(tenant);
+            let ctx = conformance::ctx(tenant, &scope, None);
+            conformance::ingest_batch(
+                store.as_ref(),
+                &ctx,
+                conformance::batch(
+                    vec![conformance::node("lnk-a", "from the batch")],
+                    vec![graph_storage_sdk::models::EdgeSpec {
+                        type_id: conformance::OWNED_ONLY.to_owned(),
+                        ..conformance::edge("lnk-a", "lnk-z")
+                    }],
+                ),
+            )
+            .await
+        })
+    };
+    until_a_session_waits_on_a_lock(&raw, "the batch never waited on the earlier key").await;
+    holder
+        .execute_unprepared(&format!(
+            "UPDATE node SET gts_node_type_id = (SELECT id FROM gts_type \
+             WHERE tenant_id = '{tenant}' AND gts_type_id = '{}'), version = version + 1 \
+             WHERE tenant_id = '{tenant}' AND node_key = 'lnk-z'",
+            conformance::REFERENCE
+        ))
+        .await
+        .expect("the holder materializes the endpoint as a type the edge refuses");
+    holder.commit().await.expect("the holder commits");
+
+    let outcome = writer.await.expect("the writer task does not panic");
+    assert!(
+        outcome.is_err(),
+        "an owned-only edge to a reference node is refused: {outcome:?}"
+    );
+    let row = raw
+        .query_one_raw(sea_orm::Statement::from_string(
+            sea_orm::DatabaseBackend::Postgres,
+            format!(
+                "SELECT count(*)::bigint AS n FROM edge e JOIN gts_type t \
+                 ON t.id = e.gts_edge_type_id WHERE e.tenant_id = '{tenant}' \
+                 AND t.gts_type_id = '{}'",
+                conformance::OWNED_ONLY
+            ),
+        ))
+        .await
+        .expect("the count reads")
+        .expect("a count is one row");
+    assert_eq!(
+        row.try_get::<i64>("", "n").expect("a count"),
+        0,
+        "no edge the type refuses was written"
+    );
+}
+
+/// A batch claims a source namespace only after the earlier keys pending in
+/// its bulk run are inserted (gears-rust #5864, a review finding). Claiming first
+/// held the namespace row while the batch then waited on an earlier key,
+/// and a batch holding that key and needing the namespace deadlocked with
+/// it. Here the batch waits on an earlier key held by another transaction,
+/// and a third session must be able to claim the namespace meanwhile: the
+/// batch has not taken it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_namespace_is_claimed_after_the_earlier_keys_of_the_run() {
+    use sea_orm::{ConnectionTrait as _, TransactionTrait as _};
+    let Some(stand) = stand().await else {
+        return;
+    };
+    let tenant = tenant_on(&stand).await;
+    let scope = AccessScope::for_tenant(tenant);
+    let ctx = conformance::ctx(tenant, &scope, None);
+    register_constrained_types(&stand, &ctx).await;
+
+    let raw = sea_orm::Database::connect(&stand.dsn)
+        .await
+        .expect("a plain connection for the other batch");
+    let holder = raw.begin().await.expect("the holder begins");
+    holder
+        .execute_unprepared(&format!(
+            "INSERT INTO node (tenant_id, node_key, gts_node_type_id, name) \
+             SELECT '{tenant}', 'ns-a', id, 'held' FROM gts_type \
+             WHERE tenant_id = '{tenant}' AND gts_type_id = '{}'",
+            conformance::OWNED
+        ))
+        .await
+        .expect("the holder takes the earlier key");
+
+    let writer = {
+        let store = Arc::clone(&stand.store);
+        tokio::spawn(async move {
+            let scope = AccessScope::for_tenant(tenant);
+            let ctx = conformance::ctx(tenant, &scope, None);
+            let mirror = graph_storage_sdk::models::NodeSpec {
+                node_key: "nsz:repo:1".to_owned(),
+                type_id: conformance::REFERENCE.to_owned(),
+                payload: Some(serde_json::json!({
+                    "source": { "system": "nsz", "kind": "repo", "native_id": "1" }
+                })),
+                ..graph_storage_sdk::models::NodeSpec::default()
+            };
+            conformance::ingest_batch(
+                store.as_ref(),
+                &ctx,
+                conformance::batch(vec![conformance::node("ns-a", "a"), mirror], Vec::new()),
+            )
+            .await
+        })
+    };
+    until_a_session_waits_on_a_lock(&raw, "the batch never waited on the earlier key").await;
+
+    let probe = sea_orm::Database::connect(&stand.dsn)
+        .await
+        .expect("a third session");
+    let claim = probe.begin().await.expect("the probe begins");
+    claim
+        .execute_unprepared("SET LOCAL lock_timeout = '2s'")
+        .await
+        .expect("the probe bounds its wait");
+    let claimed = claim
+        .execute_unprepared(&format!(
+            "INSERT INTO source_namespace_owner (tenant_id, namespace, owner_principal) \
+             VALUES ('{tenant}', 'nsz', 'probe') ON CONFLICT DO NOTHING"
+        ))
+        .await;
+    claim.rollback().await.expect("the probe rolls back");
+    holder.rollback().await.expect("the holder lets the key go");
+    writer
+        .await
+        .expect("the writer task does not panic")
+        .expect("the batch lands once the earlier key is let go");
+    assert!(
+        claimed.is_ok(),
+        "the waiting batch must not hold the namespace yet: {claimed:?}"
+    );
+}

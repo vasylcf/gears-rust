@@ -16,7 +16,10 @@ use graph_storage_sdk::models::{
 };
 use graph_storage_sdk::plugin_api::{EmbeddingPlan, GraphStoreError, StoreCtx};
 use sea_orm::sea_query::{Expr, OnConflict};
-use sea_orm::{ActiveValue, ColumnTrait, Condition, EntityTrait, ExprTrait, QueryFilter};
+use sea_orm::{
+    ActiveValue, ColumnTrait, Condition, EntityTrait, ExprTrait, QueryFilter, QueryOrder,
+    QuerySelect,
+};
 use time::OffsetDateTime;
 use toolkit_db::secure::{
     DBRunner, SecureEntityExt, SecureInsertExt, SecureInsertManyExt, SecureUpdateExt,
@@ -507,9 +510,11 @@ async fn ingest_in_tx(
 /// removal) happens while that lock is held. Reading the row back afterwards
 /// therefore reads a settled value, and the decision is made on that.
 ///
-/// The platform's secure ORM exposes no row-locking surface at all
-/// (`SELECT … FOR UPDATE` is unreachable from a gear), so this statement is
-/// not a clever alternative to a lock — it is the only lock available.
+/// When this was written the platform's secure ORM exposed no row-locking
+/// surface; it now does (`lock_shared`, and a lock set inside `project_all`,
+/// which the node phase uses). The upsert stays the instrument here because
+/// the row may not exist yet, and a locking read cannot lock a row that is
+/// not there.
 async fn fence_scope(
     tenant: Uuid,
     scope: &AccessScope,
@@ -768,6 +773,155 @@ async fn stored_nodes(
     Ok(found)
 }
 
+/// Which lock a prefetched node is read again under at its turn.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Relock {
+    /// A node the batch carries and writes.
+    Written,
+    /// An endpoint the batch only links to.
+    Linked,
+}
+
+/// What decides whether a step's prefetched row is read again, and with which
+/// lock, before the step runs.
+struct RelockState<'a> {
+    request: &'a IngestRequest,
+    stored: &'a BTreeMap<String, node::Model>,
+    seen: &'a std::collections::BTreeSet<String>,
+    relocked: &'a std::collections::BTreeSet<String>,
+    prefetched: &'a std::collections::BTreeSet<String>,
+}
+
+impl RelockState<'_> {
+    /// The lock a step's prefetched row is read again under, or `None` when
+    /// it has no prefetched row or was read again already.
+    fn mode(&self, step: &NodeStep<'_>) -> Option<Relock> {
+        match *step {
+            NodeStep::Node(index) => {
+                let key = self.request.nodes[index].node_key.as_str();
+                (self.stored.contains_key(key)
+                    && !self.seen.contains(key)
+                    && !self.relocked.contains(key))
+                .then_some(Relock::Written)
+            }
+            NodeStep::Endpoint { key, .. } => (self.prefetched.contains(key)
+                && !self.relocked.contains(key))
+            .then_some(Relock::Linked),
+        }
+    }
+
+    /// The keys of the consecutive steps from the first of `steps` that are
+    /// read again under the same lock, at most a chunk of them.
+    fn run_keys(&self, steps: &[NodeStep<'_>], mode: Relock) -> Vec<String> {
+        let mut keys: Vec<String> = Vec::new();
+        for step in steps {
+            if self.mode(step) != Some(mode) || keys.len() == PREFETCH_CHUNK {
+                break;
+            }
+            let key = step.key(self.request).to_owned();
+            if keys.last() != Some(&key) {
+                keys.push(key);
+            }
+        }
+        keys
+    }
+}
+
+/// Read a run of prefetched rows again under its lock and replace what the
+/// up-front read said about them.
+async fn relock_run(
+    scope: &AccessScope,
+    tx: &impl DBRunner,
+    mode: Relock,
+    keys: &[String],
+    stored: &mut BTreeMap<String, node::Model>,
+    node_ids: &mut BTreeMap<String, Endpoint>,
+) -> Result<(), GraphStoreError> {
+    match mode {
+        Relock::Written => {
+            let mut fresh = relock_rows(scope, tx, keys).await?;
+            for key in keys {
+                // Gone since the up-front read -- purged or removed by a
+                // scope replacement -- the key is new again.
+                match fresh.remove(key) {
+                    Some(row) => stored.insert(key.clone(), row),
+                    None => stored.remove(key),
+                };
+            }
+        }
+        Relock::Linked => {
+            let mut fresh = relock_endpoints(scope, tx, keys).await?;
+            for key in keys {
+                // Tombstoned or gone since: the per-key resolution decides,
+                // refusal or phantom included.
+                match fresh.remove(key) {
+                    Some(endpoint) => node_ids.insert(key.clone(), endpoint),
+                    None => node_ids.remove(key),
+                };
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The stored rows of `keys`, tombstoned ones included, read under
+/// `FOR NO KEY UPDATE` in key order -- the lock their update takes anyway.
+async fn relock_rows(
+    scope: &AccessScope,
+    tx: &impl DBRunner,
+    keys: &[String],
+) -> Result<BTreeMap<String, node::Model>, GraphStoreError> {
+    let rows: Vec<node::Model> = node::Entity::find()
+        .secure()
+        .scope_with(scope)
+        .filter(Condition::all().add(node::Column::NodeKey.is_in(keys.to_vec())))
+        .project_all(tx, |query| {
+            query
+                .order_by_asc(node::Column::NodeKey)
+                .lock(sea_orm::sea_query::LockType::NoKeyUpdate)
+                .into_model::<node::Model>()
+        })
+        .await
+        .map_err(map_scope_err)?;
+    Ok(rows
+        .into_iter()
+        .map(|row| (row.node_key.clone(), row))
+        .collect())
+}
+
+/// The live endpoints among `keys`, read under `FOR SHARE` in key order.
+async fn relock_endpoints(
+    scope: &AccessScope,
+    tx: &impl DBRunner,
+    keys: &[String],
+) -> Result<BTreeMap<String, Endpoint>, GraphStoreError> {
+    let rows: Vec<NodeTyped> = node::Entity::find()
+        .secure()
+        .scope_with(scope)
+        .filter(Condition::all().add(node::Column::NodeKey.is_in(keys.to_vec())))
+        .filter(Condition::all().add(node::Column::DeletedAt.is_null()))
+        .project_all(tx, |query| {
+            node_typed_columns(query)
+                .order_by_asc(node::Column::NodeKey)
+                .lock(sea_orm::sea_query::LockType::Share)
+                .into_model::<NodeTyped>()
+        })
+        .await
+        .map_err(map_scope_err)?;
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            (
+                row.node_key,
+                Endpoint {
+                    id: row.id,
+                    type_id: row.gts_node_type_id,
+                },
+            )
+        })
+        .collect())
+}
+
 /// The stored rows, tombstoned ones included, of the edges a batch carries,
 /// keyed by edge key: what `upsert_edge` would read one key at a time.
 async fn stored_edges(
@@ -1008,6 +1162,10 @@ fn plan_vector(current: Option<&node::Model>, planned: PlannedVector<'_>) -> Vec
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "one node write over the transaction's working state; the namespace set is the batch's, shared with the bulk path"
+)]
 async fn upsert_node(
     w: Writer<'_>,
     tx: &impl DBRunner,
@@ -1016,6 +1174,7 @@ async fn upsert_node(
     index: usize,
     planned: PlannedVector<'_>,
     known: Known<node::Model>,
+    authorized: &mut std::collections::BTreeSet<String>,
 ) -> Result<(i64, ItemOutcome), GraphStoreError> {
     let (tenant, scope, subject) = (w.tenant, w.scope, w.subject);
     let existing = match known {
@@ -1054,8 +1213,12 @@ async fn upsert_node(
     {
         ownership::Namespaced::None => None,
         ownership::Namespaced::Under(namespace) => {
-            let writer = subject.principal();
-            super::namespaces::authorize_write(tenant, scope, tx, namespace, &writer).await?;
+            // Once per batch, whichever path meets the namespace first: the
+            // claim and the check are the same for every node that names it.
+            if authorized.insert(namespace.to_owned()) {
+                let writer = subject.principal();
+                super::namespaces::authorize_write(tenant, scope, tx, namespace, &writer).await?;
+            }
             Some(namespace.to_owned())
         }
     };
@@ -1374,6 +1537,7 @@ where
 async fn insert_new_rows<E>(
     scope: &AccessScope,
     tx: &impl DBRunner,
+    budget: RemainingBudget,
     rows: Vec<E::ActiveModel>,
     conflict: OnConflict,
     key_and_id: impl Fn(&E::Model) -> (String, i64),
@@ -1386,6 +1550,11 @@ where
     let mut landed = BTreeMap::new();
     let mut rest = rows;
     while !rest.is_empty() {
+        // Between statements, as the item loops check between items: a batch
+        // past its deadline does not start its next thousand rows.
+        if budget.is_exhausted() {
+            return Err(GraphStoreError::Deadline);
+        }
         let take = PREFETCH_CHUNK.min(rest.len());
         let chunk: Vec<E::ActiveModel> = rest.drain(..take).collect();
         // Unlike the single-row insert, a chunk whose every row lost its race
@@ -2408,6 +2577,7 @@ pub const fn migrated_embedding_dimension() -> u32 {
 
 /// One step of the node phase: a node the batch carries, or an edge endpoint
 /// it names without carrying (`edge` is the first edge that names it).
+#[derive(Clone, Copy)]
 enum NodeStep<'a> {
     Node(usize),
     Endpoint { key: &'a str, edge: usize },
@@ -2467,10 +2637,11 @@ async fn write_nodes(
 
     // What the item loop below would read one key at a time, read up front
     // in a few statements (gears-rust #5040): the live nodes the edges name
-    // without carrying, and the stored rows of the nodes carried. These reads
-    // take no lock, as the per-key reads they replace took none; a row a
-    // concurrent batch writes in between is met by the same lost-race paths
-    // as before. A key not found as a live endpoint here still takes the
+    // without carrying, and the stored rows of the nodes carried. They take
+    // no lock and run before the batch waits on any key, so what they find is
+    // read again under a lock at its turn in key order (below); a key not
+    // found here is new, and a concurrent insert of it is met by the
+    // lost-race paths. A key not found as a live endpoint still takes the
     // per-key path, tombstone check and phantom included.
     let external: Vec<&str> = named.iter().copied().collect();
     node_ids.extend(lookup_endpoints(w.scope, tx, &external).await?);
@@ -2506,22 +2677,73 @@ async fn write_nodes(
     let mut run: Vec<(usize, node::ActiveModel)> = Vec::new();
     let mut changed = false;
     let mut outcomes: Vec<Option<ItemOutcome>> = vec![None; request.nodes.len()];
-    for step in steps {
+    // The up-front reads above took no lock and ran before this batch waited
+    // on any key. A row another batch commits while this one waits on an
+    // earlier key is therefore missing from them, where the per-key read they
+    // replace -- made at the key's turn, after those waits -- saw it. So each
+    // prefetched row is read again at its turn in key order, under a lock,
+    // a run of consecutive keys per statement: a node this batch writes under
+    // `FOR NO KEY UPDATE`, the lock its update takes anyway, and an endpoint
+    // it only links to under `FOR SHARE`, which keeps a concurrent batch from
+    // materializing it into a type the edge does not admit until this one
+    // commits. Neither blocks a foreign-key check of another batch's edge.
+    let prefetched_endpoints: std::collections::BTreeSet<String> = external
+        .iter()
+        .filter(|key| node_ids.contains_key(**key))
+        .map(|key| (*key).to_owned())
+        .collect();
+    let mut relocked = std::collections::BTreeSet::new();
+    for position in 0..steps.len() {
         // Between items, not inside one: an item half written is not a state
         // this store has, and the transaction is what guarantees that.
         if w.budget.is_exhausted() {
             return Err(GraphStoreError::Deadline);
         }
+        let step = steps[position];
+        let state = RelockState {
+            request,
+            stored: &stored,
+            seen: &seen,
+            relocked: &relocked,
+            prefetched: &prefetched_endpoints,
+        };
+        if let Some(mode) = state.mode(&step) {
+            let keys = state.run_keys(&steps[position..], mode);
+            // The pending run holds earlier keys; its locks come first.
+            batch
+                .flush(tx, &mut run, node_ids, &mut outcomes, &mut authorized)
+                .await?;
+            relock_run(w.scope, tx, mode, &keys, &mut stored, node_ids).await?;
+            relocked.extend(keys);
+        }
         if let NodeStep::Node(index) = step
-            && let Some(row) = batch
-                .new_row(tx, index, &stored, &seen, &mut authorized)
-                .await?
+            && let Some((row, namespace)) = batch.new_row(index, &stored, &seen)
         {
+            // A claim locks the namespace row, so the earlier keys pending
+            // in the run are inserted before it, not after.
+            if let Some(namespace) = namespace
+                && !authorized.contains(&namespace)
+            {
+                batch
+                    .flush(tx, &mut run, node_ids, &mut outcomes, &mut authorized)
+                    .await?;
+                super::namespaces::authorize_write(
+                    w.tenant,
+                    w.scope,
+                    tx,
+                    &namespace,
+                    &w.subject.principal(),
+                )
+                .await?;
+                authorized.insert(namespace);
+            }
             seen.insert(request.nodes[index].node_key.clone());
             run.push((index, row));
             continue;
         }
-        batch.flush(tx, &mut run, node_ids, &mut outcomes).await?;
+        batch
+            .flush(tx, &mut run, node_ids, &mut outcomes, &mut authorized)
+            .await?;
         let index = match step {
             NodeStep::Node(index) => index,
             NodeStep::Endpoint { key, edge } => {
@@ -2555,6 +2777,7 @@ async fn write_nodes(
                 index,
                 info,
                 known(&mut stored, &mut seen, &spec.node_key),
+                &mut authorized,
             )
             .await?;
         node_ids.insert(
@@ -2566,7 +2789,9 @@ async fn write_nodes(
         );
         outcomes[index] = Some(write);
     }
-    batch.flush(tx, &mut run, node_ids, &mut outcomes).await?;
+    batch
+        .flush(tx, &mut run, node_ids, &mut outcomes, &mut authorized)
+        .await?;
     for outcome in outcomes.into_iter().flatten() {
         changed |= tally.node(&outcome);
     }
@@ -2584,50 +2809,38 @@ struct NodeBatch<'a> {
 }
 
 impl NodeBatch<'_> {
-    /// The row node `index` is inserted as when it joins a bulk run, or
-    /// `None` when the item path has a question to ask about it.
-    async fn new_row(
+    /// The row node `index` is inserted as when it joins a bulk run, with the
+    /// namespace it names, or `None` when the item path has a question to ask
+    /// about it. The namespace is not authorized here: a claim takes a lock,
+    /// and the caller first inserts the pending run of earlier keys.
+    fn new_row(
         &self,
-        tx: &impl DBRunner,
         index: usize,
         stored: &BTreeMap<String, node::Model>,
         seen: &std::collections::BTreeSet<String>,
-        authorized: &mut std::collections::BTreeSet<String>,
-    ) -> Result<Option<node::ActiveModel>, GraphStoreError> {
+    ) -> Option<(node::ActiveModel, Option<String>)> {
         let spec = &self.request.nodes[index];
         if seen.contains(spec.node_key.as_str())
             || stored.contains_key(&spec.node_key)
             || !matches!(spec.expected_version, None | Some(0))
         {
-            return Ok(None);
+            return None;
         }
         let (Some(info), Some(decided)) = (
             self.types.get(&spec.type_id),
             self.embedding.nodes.get(index),
         ) else {
-            return Ok(None);
+            return None;
         };
         let Ok(namespaced) = ownership::namespace_of(info.family.as_deref(), spec.payload.as_ref())
         else {
-            return Ok(None);
+            return None;
         };
         let namespace = match namespaced {
             ownership::Namespaced::None => None,
-            ownership::Namespaced::Under(namespace) => {
-                if authorized.insert(namespace.to_owned()) {
-                    super::namespaces::authorize_write(
-                        self.w.tenant,
-                        self.w.scope,
-                        tx,
-                        namespace,
-                        &self.w.subject.principal(),
-                    )
-                    .await?;
-                }
-                Some(namespace.to_owned())
-            }
+            ownership::Namespaced::Under(namespace) => Some(namespace.to_owned()),
         };
-        Ok(Some(new_node_row(
+        let row = new_node_row(
             self.w,
             spec,
             info,
@@ -2649,10 +2862,11 @@ impl NodeBatch<'_> {
                         active_epoch: self.embedding.epoch,
                     },
                 ),
-                namespace,
+                namespace: namespace.clone(),
                 now: self.now,
             },
-        )))
+        );
+        Some((row, namespace))
     }
 
     /// Insert the pending run, then write on the item path, right after it,
@@ -2664,6 +2878,7 @@ impl NodeBatch<'_> {
         run: &mut Vec<(usize, node::ActiveModel)>,
         node_ids: &mut BTreeMap<String, Endpoint>,
         outcomes: &mut [Option<ItemOutcome>],
+        authorized: &mut std::collections::BTreeSet<String>,
     ) -> Result<(), GraphStoreError> {
         if run.is_empty() {
             return Ok(());
@@ -2672,17 +2887,21 @@ impl NodeBatch<'_> {
         let landed = insert_new_rows::<node::Entity>(
             self.w.scope,
             tx,
+            self.w.budget,
             rows,
             locking_conflict(node::Column::TenantId, node::Column::NodeKey),
             |row| (row.node_key.clone(), row.id),
         )
         .await?;
         for index in indices {
+            if self.w.budget.is_exhausted() {
+                return Err(GraphStoreError::Deadline);
+            }
             let spec = &self.request.nodes[index];
             let info = &self.types[&spec.type_id];
             let (id, outcome) = match landed.get(&spec.node_key) {
                 Some(&id) => (id, ItemOutcome::Inserted),
-                None => self.upsert(tx, index, info, None).await?,
+                None => self.upsert(tx, index, info, None, authorized).await?,
             };
             node_ids.insert(
                 spec.node_key.clone(),
@@ -2703,6 +2922,7 @@ impl NodeBatch<'_> {
         index: usize,
         info: &TypeInfo,
         known: Known<node::Model>,
+        authorized: &mut std::collections::BTreeSet<String>,
     ) -> Result<(i64, ItemOutcome), GraphStoreError> {
         // Index-aligned with the request's nodes, by the port's contract. A
         // missing entry would silently unembed a node, so it is a store
@@ -2725,6 +2945,7 @@ impl NodeBatch<'_> {
                 active_epoch: self.embedding.epoch,
             },
             known,
+            authorized,
         )
         .await
     }
@@ -3003,12 +3224,16 @@ async fn flush_new_edges(
     let landed = insert_new_rows::<edge::Entity>(
         w.scope,
         tx,
+        w.budget,
         rows,
         locking_conflict(edge::Column::TenantId, edge::Column::EdgeKey),
         |row| (row.edge_key.clone(), row.id),
     )
     .await?;
     for (index, key, src, dst) in pending {
+        if w.budget.is_exhausted() {
+            return Err(GraphStoreError::Deadline);
+        }
         outcomes[index] = Some(if landed.contains_key(&key) {
             ItemOutcome::Inserted
         } else {
