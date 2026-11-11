@@ -232,6 +232,10 @@ pub struct ListTypesParams {
     pub limit: Option<u32>,
     /// The `next_cursor` of a previous page, to continue it.
     pub cursor: Option<String>,
+    /// The target tenant (`?tenant=`, gears-rust #5623). Named here rather
+    /// than read by a second extractor: the catch-all below sees the whole
+    /// query string, so a parameter this struct does not name is refused.
+    pub tenant: Option<uuid::Uuid>,
     /// Anything else the caller sent. Collected so it can be refused: a
     /// parameter silently ignored is a filter the caller believes is applied,
     /// which is the failure mode the projection's `OData` binding exists to
@@ -244,16 +248,18 @@ pub struct ListTypesParams {
 pub async fn list_types(
     Extension(ctx): Extension<SecurityContext>,
     Extension(services): Extension<Arc<GraphServices>>,
-    Query(target): Query<dto::TargetTenantParam>,
     Query(params): Query<ListTypesParams>,
 ) -> ApiResult<Json<dto::GraphTypeListDto>> {
     if let Some(unknown) = params.rest.keys().next() {
         return Err(DomainError::invalid(format!(
             "`{unknown}` is not an accepted query option; the type catalog takes \
-             `kind`, `pattern`, `limit` and `cursor`"
+             `kind`, `pattern`, `limit`, `cursor` and `tenant`"
         ))
         .into());
     }
+    let target = dto::TargetTenantParam {
+        tenant: params.tenant,
+    };
     // Through the SDK, like every other closed enum on this surface: a match
     // written out here is one a maintainer can give a default arm, and the
     // spelling would be free to drift from the encoder that produced it.

@@ -662,6 +662,105 @@ mod rest {
             .expect("a request")
     }
 
+    /// Every route but readiness takes `?tenant=`: none refuses it as an
+    /// unknown parameter, and each answers a refused tenant with 404. The list
+    /// is the routes `register_routes` declares the parameter on; a route
+    /// whose own query binding refuses parameters it does not name (`GET
+    /// /types` did) answers 400 here.
+    #[tokio::test]
+    async fn every_route_takes_the_tenant_parameter() {
+        let (root, target) = (Uuid::now_v7(), Uuid::now_v7());
+        let (harness, client) = client_with(Answer::Exact, vec![target]);
+        let service = service_identity(root);
+        seed(client.in_tenant(target).as_ref(), &service, &["k"]).await;
+        let router = register_routes(Router::new(), &NoopRegistry, Arc::clone(&harness.services))
+            .layer(axum::Extension(service));
+
+        let types: Vec<serde_json::Value> = conformance::ontology_batch()
+            .into_iter()
+            .map(|r| serde_json::json!({"type_id": r.type_id, "schema": r.schema}))
+            .collect();
+        let owned = conformance::OWNED;
+        let endpoints: Vec<(&str, String, Option<serde_json::Value>)> = vec![
+            (
+                "POST",
+                "/types".into(),
+                Some(serde_json::json!({"types": types.clone()})),
+            ),
+            (
+                "POST",
+                "/types/compatibility".into(),
+                Some(serde_json::json!({"types": types})),
+            ),
+            ("GET", "/types".into(), None),
+            ("GET", format!("/types/{owned}"), None),
+            ("GET", "/source-namespaces".into(), None),
+            (
+                "POST",
+                "/source-namespaces/some-ns/owner".into(),
+                Some(serde_json::json!({"owner_principal": "p"})),
+            ),
+            (
+                "POST",
+                "/ingest".into(),
+                Some(serde_json::json!({"nodes": [{"node_key": "k2", "type_id": owned}]})),
+            ),
+            ("GET", "/nodes/k".into(), None),
+            ("GET", "/edges/missing".into(), None),
+            ("GET", "/nodes:count".into(), None),
+            ("GET", "/nodes".into(), None),
+            ("DELETE", "/nodes/k2".into(), None),
+            ("DELETE", "/edges/missing".into(), None),
+            (
+                "POST",
+                "/search".into(),
+                Some(serde_json::json!({"mode": "lexical", "query": "k", "limit": 10})),
+            ),
+            (
+                "POST",
+                "/graph/traverse".into(),
+                Some(serde_json::json!({"seeds": ["k"], "depth": 1})),
+            ),
+            (
+                "POST",
+                "/graph/neighborhood".into(),
+                Some(serde_json::json!({"root": "k", "depth": 1})),
+            ),
+            ("GET", "/revision".into(), None),
+        ];
+        let request = |method: &str, path: &str, tenant: Uuid, body: Option<&serde_json::Value>| {
+            let builder = Request::builder()
+                .method(method)
+                .uri(format!("/graph-storage/v1{path}?tenant={tenant}"));
+            match body {
+                Some(body) => builder
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string())),
+                None => builder.body(Body::empty()),
+            }
+            .expect("a request")
+        };
+        for (method, path, body) in &endpoints {
+            let (status, answer) =
+                send(&router, request(method, path, target, body.as_ref())).await;
+            assert_ne!(
+                status,
+                StatusCode::BAD_REQUEST,
+                "{method} {path} refuses ?tenant= for a granted tenant: {answer}"
+            );
+            let (status, answer) = send(
+                &router,
+                request(method, path, Uuid::now_v7(), body.as_ref()),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::NOT_FOUND,
+                "{method} {path} answers a refused tenant with 404: {answer}"
+            );
+        }
+    }
+
     /// The query parameter is the in-process `in_tenant` over HTTP: a granted
     /// tenant answers, a refused and an unknown one answer the same 404, and
     /// a value that is not a tenant id is the caller's mistake.
