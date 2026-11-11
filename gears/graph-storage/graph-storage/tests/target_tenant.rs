@@ -267,6 +267,66 @@ async fn a_subtree_the_pdp_returns_for_a_target_is_pinned_to_the_target() {
     }
 }
 
+/// A refused target tenant is logged with the caller and the tenant it asked
+/// for: one service identity acts in many tenants, and the 404 the caller
+/// gets says nothing to an operator.
+#[tokio::test(flavor = "current_thread")]
+async fn a_refused_target_tenant_is_logged_with_ids() {
+    use std::sync::{Arc as StdArc, Mutex};
+    use tracing_subscriber::layer::SubscriberExt as _;
+
+    #[derive(Clone, Default)]
+    struct Captured(StdArc<Mutex<Vec<String>>>);
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Captured {
+        fn on_event(
+            &self,
+            event: &tracing::Event<'_>,
+            _ctx: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            struct Fields(String);
+            impl tracing::field::Visit for Fields {
+                fn record_debug(
+                    &mut self,
+                    field: &tracing::field::Field,
+                    value: &dyn std::fmt::Debug,
+                ) {
+                    self.0.push_str(&format!("{}={value:?} ", field.name()));
+                }
+            }
+            let mut fields = Fields(String::new());
+            event.record(&mut fields);
+            self.0.lock().expect("not poisoned").push(fields.0);
+        }
+    }
+
+    let captured = Captured::default();
+    let _guard =
+        tracing::subscriber::set_default(tracing_subscriber::registry().with(captured.clone()));
+
+    let (root, refused) = (Uuid::now_v7(), Uuid::now_v7());
+    let (_harness, client) = client_with(Answer::Exact, Vec::new());
+    let service = service_identity(root);
+    client
+        .in_tenant(refused)
+        .revision(&service)
+        .await
+        .expect_err("refused");
+
+    let events = captured.0.lock().expect("not poisoned");
+    let line = events
+        .iter()
+        .find(|line| line.contains("a call about a target tenant was refused"))
+        .unwrap_or_else(|| panic!("the refusal is logged: {events:?}"));
+    assert!(
+        line.contains(&refused.to_string()),
+        "names the target: {line}"
+    );
+    assert!(
+        line.contains(&service.subject_id().to_string()),
+        "names the caller: {line}"
+    );
+}
+
 /// Every method answers a target the PDP refuses with the same 404 an
 /// unknown tenant gets, and so does a grant that names another tenant.
 #[tokio::test]
@@ -757,6 +817,52 @@ mod rest {
                 status,
                 StatusCode::NOT_FOUND,
                 "{method} {path} answers a refused tenant with 404: {answer}"
+            );
+        }
+    }
+
+    /// A refused tenant answers 404, so every operation that takes `?tenant=`
+    /// declares a 404 in the `OpenAPI` document, and generated clients know the
+    /// refusal. Read off the operations the routes register, not a list kept
+    /// by hand.
+    #[test]
+    fn every_operation_that_takes_a_tenant_declares_not_found() {
+        #[derive(Default)]
+        struct Recorder(std::sync::Mutex<Vec<toolkit::api::OperationSpec>>);
+        impl toolkit::api::OpenApiRegistry for Recorder {
+            fn register_operation(&self, spec: &toolkit::api::OperationSpec) {
+                self.0.lock().expect("not poisoned").push(spec.clone());
+            }
+            fn ensure_schema_raw(
+                &self,
+                name: &str,
+                _schemas: Vec<(
+                    String,
+                    utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
+                )>,
+            ) -> String {
+                name.to_owned()
+            }
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
+            }
+        }
+
+        let harness = Harness::allowed();
+        let recorder = Recorder::default();
+        let _router = register_routes(Router::new(), &recorder, Arc::clone(&harness.services));
+        let specs = recorder.0.lock().expect("not poisoned");
+        let targeted: Vec<_> = specs
+            .iter()
+            .filter(|spec| spec.params.iter().any(|param| param.name == "tenant"))
+            .collect();
+        assert_eq!(targeted.len(), 17, "the routes that take ?tenant=");
+        for spec in targeted {
+            assert!(
+                spec.responses.iter().any(|response| response.status == 404),
+                "{} {} takes ?tenant= and declares no 404",
+                spec.method,
+                spec.path
             );
         }
     }

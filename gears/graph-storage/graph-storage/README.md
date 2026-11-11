@@ -152,8 +152,9 @@ Each is the shipped behaviour, with the contract that fixes it.
   every node and static edge of the scope -- a static edge incident to a
   removed node goes whichever scope declared it -- except a node a live
   analysis edge still references; the idempotency receipts of earlier
-  requests stay. A replacement, like every write, touches
-  the caller's own tenant only, whatever subtree its reads may see.
+  requests stay. A replacement, like every write, touches one tenant: the
+  target a call names (`?tenant=`, `in_tenant`), and otherwise the caller's
+  own, whatever subtree a read without a target may see.
 - **A tombstoned node key is not reusable before purge**; a tombstoned edge
   is revived by the next upsert that names it (DESIGN § Soft Delete Contract,
   rules 4 and 6). **Purge** (`DELETE /nodes/{key}?mode=purge`,

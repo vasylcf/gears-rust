@@ -97,7 +97,7 @@ impl<'a> From<&'a SecurityContext> for Call<'a> {
 ///
 /// A read keeps the scope the PDP returned, subtree and all: a parent tenant
 /// seeing its children is the platform's visibility rule. Every other action
-/// is pinned to the caller's own tenant. The store looks rows up *by key
+/// is pinned to the caller's own tenant (or to the target, below). The store looks rows up *by key
 /// under the scope* on the write path -- the upsert's existing row, an edge's
 /// endpoints, a replacement's stale set, a delete's target -- and under a
 /// `Subtree` scope a parent's write of key K found the child's K and
@@ -125,13 +125,45 @@ pub async fn scope_for(
             .tenant_mode(TenantMode::RootOnly)
             .resource_property(pep_properties::OWNER_TENANT_ID, target)
             .require_constraints(true);
-        let scope = enforcer
+        // Every refusal is logged with ids only: one service identity can act
+        // in many tenants, and a caller trying one tenant after another is
+        // visible nowhere else -- the answer is a plain 404, and the PEP does
+        // not log a denial.
+        let refused = |why: &str| {
+            tracing::info!(
+                subject_id = %ctx.subject_id(),
+                subject_tenant = %ctx.subject_tenant_id(),
+                target_tenant = %target,
+                resource = resource.name(),
+                action,
+                why,
+                "graph-storage: a call about a target tenant was refused"
+            );
+        };
+        let scope = match enforcer
             .access_scope_with(ctx, resource, action, None, &request)
             .await
-            .map_err(|error| map_enforcer_err(&error))?;
+        {
+            Ok(scope) => scope,
+            Err(error) => {
+                let mapped = map_enforcer_err(&error);
+                if matches!(mapped, DomainError::AccessDenied) {
+                    refused("the policy denied it");
+                }
+                return Err(mapped);
+            }
+        };
         if !reaches(&scope, target) {
+            refused("the granted scope does not name the tenant");
             return Err(DomainError::AccessDenied);
         }
+        tracing::debug!(
+            subject_id = %ctx.subject_id(),
+            target_tenant = %target,
+            resource = resource.name(),
+            action,
+            "graph-storage: a call about a target tenant"
+        );
         return Ok(pinned_to(&scope, target));
     }
     let tenant = ctx.subject_tenant_id();
