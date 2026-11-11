@@ -63,6 +63,12 @@ pub async fn purge_node(
                     });
                 };
 
+                // The node was found under the caller's whole scope; its edges
+                // are deleted under the tenant part of it. A scope can name
+                // resources by id, and `id` is each entity's own column, so the
+                // node's id applied to `edge.id` would keep its incident edges,
+                // and the foreign key would then refuse the node. Erasing a
+                // node erases its edges in its tenant, whoever declared them.
                 let purged_edges = edge::Entity::delete_many()
                     .filter(
                         Condition::any()
@@ -70,7 +76,7 @@ pub async fn purge_node(
                             .add(edge::Column::DstNodeId.eq(stored.id)),
                     )
                     .secure()
-                    .scope_with(&scope)
+                    .scope_with(&scope.tenant_only())
                     .exec(tx)
                     .await
                     .map_err(map_scope_err)?
