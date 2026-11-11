@@ -40,9 +40,11 @@ use crate::infra::store::{PgGraphStore, map_db_error, map_scope_err};
 /// back through this binding as `Db`, and answering it as `InvalidQuery` told
 /// the caller to fix a request that was fine and not to retry it. It is
 /// `Unavailable`, worded and logged as every other database failure of the
-/// store (`map_db_error`), so the driver's text stays in the log. The match
-/// names every variant, so a new one is classified where it is added rather
-/// than defaulting to the caller's fault.
+/// store (`map_db_error`), so the driver's text stays in the log. It is not
+/// yet classified by SQLSTATE as the store's other database errors are
+/// (`map_db_err`): the pager reports it as text, without the code
+/// (gears-rust #5914). The match names every variant, so a new one is
+/// classified where it is added rather than defaulting to the caller's fault.
 fn map_odata_err(error: &toolkit_odata::Error) -> GraphStoreError {
     use toolkit_odata::Error as E;
     match error {
