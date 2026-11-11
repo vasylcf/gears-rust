@@ -2725,7 +2725,7 @@ async fn a_purge_under_a_node_id_scope_removes_the_nodes_edges() {
 /// A purge under a scope with no tenant constraint -- a direct store call;
 /// the service always pins a write to one tenant -- removes the node's edges
 /// in the node's own tenant rather than in an empty scope, so the foreign key
-/// does not refuse the node (gears-rust #5906, CodeRabbit).
+/// does not refuse the node (gears-rust #5906, a review finding).
 #[tokio::test]
 async fn a_purge_under_an_unconstrained_scope_removes_the_nodes_edges() {
     let Some(stand) = stand().await else {
