@@ -285,12 +285,17 @@ async fn a_refused_target_tenant_is_logged_with_ids() {
         ) {
             struct Fields(String);
             impl tracing::field::Visit for Fields {
+                #[expect(
+                    clippy::use_debug,
+                    reason = "tracing hands every field to a visitor as `dyn Debug`"
+                )]
                 fn record_debug(
                     &mut self,
                     field: &tracing::field::Field,
                     value: &dyn std::fmt::Debug,
                 ) {
-                    self.0.push_str(&format!("{}={value:?} ", field.name()));
+                    use std::fmt::Write as _;
+                    write!(self.0, "{}={value:?} ", field.name()).expect("writing to a String");
                 }
             }
             let mut fields = Fields(String::new());
