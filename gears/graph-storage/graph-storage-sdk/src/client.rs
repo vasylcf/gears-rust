@@ -227,7 +227,9 @@ pub trait GraphStorageClientV1: Send + Sync {
     /// (the same answer as an unknown tenant), and a granted call reads and
     /// writes `tenant`'s rows alone, reads included -- no answer mixes two
     /// tenants. The acting subject recorded on rows stays the caller. Calling
-    /// `in_tenant` on a scoped client replaces its tenant.
+    /// `in_tenant` on a scoped client replaces its tenant. The caller's own
+    /// tenant is a target like any other: a read then leaves out the subtree
+    /// it would include without one.
     ///
     /// The provided implementation refuses every call as `unimplemented`, so
     /// an implementation that does not support a target tenant -- a test

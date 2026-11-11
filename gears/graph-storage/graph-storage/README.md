@@ -120,7 +120,8 @@ Each is the shipped behaviour, with the contract that fixes it.
   `t`; a refusal is `404`, the same answer as an unknown tenant, and a granted
   call reads and writes `t`'s rows alone, reads included. Types are per
   tenant, so a producer registers its types in each tenant it writes to. The
-  acting subject recorded on rows is the caller. DESIGN § Authorization Model
+  acting subject recorded on rows is the caller. Naming your own tenant is a
+  target too: the subtree a read would otherwise include is left out. DESIGN § Authorization Model
   states the trade-off for calls made on behalf of a signed-in user.
 - **`expected_version` is the one conditional write.** A stored version is 1 or
   more and advances on every update; `Some(n)` requires exactly `n` and is a
