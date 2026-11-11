@@ -2461,87 +2461,24 @@ async fn write_nodes(
     // vector. A namespace is authorized once, before the rows that name it.
     // Whatever does not qualify, or lost its key to a concurrent batch, is
     // written by the item loop as before.
-    let fresh: BTreeMap<String, i64> = {
-        let now = OffsetDateTime::now_utc();
-        let mut first = std::collections::BTreeSet::new();
-        let mut authorized = std::collections::BTreeSet::new();
-        let mut rows = Vec::new();
-        for step in &steps {
-            let NodeStep::Node(index) = *step else {
-                continue;
-            };
-            let spec = &request.nodes[index];
-            if !first.insert(spec.node_key.as_str())
-                || stored.contains_key(&spec.node_key)
-                || !matches!(spec.expected_version, None | Some(0))
-            {
-                continue;
-            }
-            let (Some(info), Some(decided)) =
-                (types.get(&spec.type_id), embedding.nodes.get(index))
-            else {
-                continue;
-            };
-            let Ok(namespaced) =
-                ownership::namespace_of(info.family.as_deref(), spec.payload.as_ref())
-            else {
-                continue;
-            };
-            let namespace = match namespaced {
-                ownership::Namespaced::None => None,
-                ownership::Namespaced::Under(namespace) => {
-                    if authorized.insert(namespace.to_owned()) {
-                        super::namespaces::authorize_write(
-                            w.tenant,
-                            w.scope,
-                            tx,
-                            namespace,
-                            &w.subject.principal(),
-                        )
-                        .await?;
-                    }
-                    Some(namespace.to_owned())
-                }
-            };
-            rows.push(new_node_row(
-                w,
-                spec,
-                info,
-                NewNode {
-                    name: spec.name.clone().unwrap_or_default(),
-                    payload: spec
-                        .payload
-                        .clone()
-                        .unwrap_or_else(|| serde_json::json!({})),
-                    search_text: compose_search_text(
-                        spec.name.as_deref(),
-                        spec.payload.as_ref(),
-                        &info.full_text_search,
-                    ),
-                    vector: plan_vector(
-                        None,
-                        PlannedVector {
-                            decided,
-                            active_epoch: embedding.epoch,
-                        },
-                    ),
-                    namespace,
-                    now,
-                },
-            ));
-        }
-        insert_new_rows::<node::Entity>(
-            w.scope,
-            tx,
-            rows,
-            OnConflict::columns([node::Column::TenantId, node::Column::NodeKey])
-                .do_nothing()
-                .to_owned(),
-            |row| (row.node_key.clone(), row.id),
-        )
-        .await?
+    // New nodes are inserted in bulk, but never ahead of the key order: the
+    // steps run in one global key order, as #5042 requires of every write, a
+    // run of consecutive new nodes is collected, and the run is inserted
+    // before any step that writes on its own -- a phantom endpoint, an
+    // update, a repeat -- and at the end. A node qualifies when the item path
+    // would insert it without a question to ask: its first occurrence, no
+    // stored row, no `expected_version` but `Some(0)`, a registered type and
+    // a planned vector. A namespace is authorized once, at the first node
+    // that names it (gears-rust #5040).
+    let batch = NodeBatch {
+        w,
+        request,
+        types,
+        embedding,
+        now: OffsetDateTime::now_utc(),
     };
-
+    let mut authorized = std::collections::BTreeSet::new();
+    let mut run: Vec<(usize, node::ActiveModel)> = Vec::new();
     let mut changed = false;
     let mut outcomes: Vec<Option<ItemOutcome>> = vec![None; request.nodes.len()];
     for step in steps {
@@ -2550,6 +2487,16 @@ async fn write_nodes(
         if w.budget.is_exhausted() {
             return Err(GraphStoreError::Deadline);
         }
+        if let NodeStep::Node(index) = step
+            && let Some(row) = batch
+                .new_row(tx, index, &stored, &seen, &mut authorized)
+                .await?
+        {
+            seen.insert(request.nodes[index].node_key.clone());
+            run.push((index, row));
+            continue;
+        }
+        batch.flush(tx, &mut run, node_ids, &mut outcomes).await?;
         let index = match step {
             NodeStep::Node(index) => index,
             NodeStep::Endpoint { key, edge } => {
@@ -2577,44 +2524,14 @@ async fn write_nodes(
                 "type is not registered".into(),
             )
         })?;
-        // Inserted by the bulk statement above: its first occurrence is done.
-        if !seen.contains(spec.node_key.as_str())
-            && let Some(&id) = fresh.get(&spec.node_key)
-        {
-            seen.insert(spec.node_key.clone());
-            node_ids.insert(
-                spec.node_key.clone(),
-                Endpoint {
-                    id,
-                    type_id: info.id,
-                },
-            );
-            outcomes[index] = Some(ItemOutcome::Inserted);
-            continue;
-        }
-        // Index-aligned with the request's nodes, by the port's contract. A
-        // missing entry would silently unembed a node, so it is a store
-        // failure rather than a default.
-        let decided = embedding.nodes.get(index).ok_or_else(|| {
-            GraphStoreError::Internal(format!(
-                "embedding plan covers {} nodes; the batch has {}",
-                embedding.nodes.len(),
-                request.nodes.len()
-            ))
-        })?;
-        let (id, write) = upsert_node(
-            w,
-            tx,
-            spec,
-            info,
-            index,
-            PlannedVector {
-                decided,
-                active_epoch: embedding.epoch,
-            },
-            known(&mut stored, &mut seen, &spec.node_key),
-        )
-        .await?;
+        let (id, write) = batch
+            .upsert(
+                tx,
+                index,
+                info,
+                known(&mut stored, &mut seen, &spec.node_key),
+            )
+            .await?;
         node_ids.insert(
             spec.node_key.clone(),
             Endpoint {
@@ -2624,14 +2541,172 @@ async fn write_nodes(
         );
         outcomes[index] = Some(write);
     }
+    batch.flush(tx, &mut run, node_ids, &mut outcomes).await?;
     for outcome in outcomes.into_iter().flatten() {
         changed |= tally.node(&outcome);
     }
     Ok(changed)
 }
 
-/// Resolve one edge endpoint: from this batch, from storage, or — when the
-/// request allows it — as a freshly created phantom.
+/// The node phase's fixed inputs, for the steps that insert new nodes in
+/// runs and write the rest one at a time.
+struct NodeBatch<'a> {
+    w: Writer<'a>,
+    request: &'a IngestRequest,
+    types: &'a BTreeMap<String, TypeInfo>,
+    embedding: &'a EmbeddingPlan,
+    now: OffsetDateTime,
+}
+
+impl NodeBatch<'_> {
+    /// The row node `index` is inserted as when it joins a bulk run, or
+    /// `None` when the item path has a question to ask about it.
+    async fn new_row(
+        &self,
+        tx: &impl DBRunner,
+        index: usize,
+        stored: &BTreeMap<String, node::Model>,
+        seen: &std::collections::BTreeSet<String>,
+        authorized: &mut std::collections::BTreeSet<String>,
+    ) -> Result<Option<node::ActiveModel>, GraphStoreError> {
+        let spec = &self.request.nodes[index];
+        if seen.contains(spec.node_key.as_str())
+            || stored.contains_key(&spec.node_key)
+            || !matches!(spec.expected_version, None | Some(0))
+        {
+            return Ok(None);
+        }
+        let (Some(info), Some(decided)) = (
+            self.types.get(&spec.type_id),
+            self.embedding.nodes.get(index),
+        ) else {
+            return Ok(None);
+        };
+        let Ok(namespaced) = ownership::namespace_of(info.family.as_deref(), spec.payload.as_ref())
+        else {
+            return Ok(None);
+        };
+        let namespace = match namespaced {
+            ownership::Namespaced::None => None,
+            ownership::Namespaced::Under(namespace) => {
+                if authorized.insert(namespace.to_owned()) {
+                    super::namespaces::authorize_write(
+                        self.w.tenant,
+                        self.w.scope,
+                        tx,
+                        namespace,
+                        &self.w.subject.principal(),
+                    )
+                    .await?;
+                }
+                Some(namespace.to_owned())
+            }
+        };
+        Ok(Some(new_node_row(
+            self.w,
+            spec,
+            info,
+            NewNode {
+                name: spec.name.clone().unwrap_or_default(),
+                payload: spec
+                    .payload
+                    .clone()
+                    .unwrap_or_else(|| serde_json::json!({})),
+                search_text: compose_search_text(
+                    spec.name.as_deref(),
+                    spec.payload.as_ref(),
+                    &info.full_text_search,
+                ),
+                vector: plan_vector(
+                    None,
+                    PlannedVector {
+                        decided,
+                        active_epoch: self.embedding.epoch,
+                    },
+                ),
+                namespace,
+                now: self.now,
+            },
+        )))
+    }
+
+    /// Insert the pending run, then write on the item path, right after it,
+    /// every node of the run a concurrent batch took since the up-front read:
+    /// `RETURNING` leaves it out, and the item path settles the lost race.
+    async fn flush(
+        &self,
+        tx: &impl DBRunner,
+        run: &mut Vec<(usize, node::ActiveModel)>,
+        node_ids: &mut BTreeMap<String, Endpoint>,
+        outcomes: &mut [Option<ItemOutcome>],
+    ) -> Result<(), GraphStoreError> {
+        if run.is_empty() {
+            return Ok(());
+        }
+        let (indices, rows): (Vec<usize>, Vec<node::ActiveModel>) = run.drain(..).unzip();
+        let landed = insert_new_rows::<node::Entity>(
+            self.w.scope,
+            tx,
+            rows,
+            OnConflict::columns([node::Column::TenantId, node::Column::NodeKey])
+                .do_nothing()
+                .to_owned(),
+            |row| (row.node_key.clone(), row.id),
+        )
+        .await?;
+        for index in indices {
+            let spec = &self.request.nodes[index];
+            let info = &self.types[&spec.type_id];
+            let (id, outcome) = match landed.get(&spec.node_key) {
+                Some(&id) => (id, ItemOutcome::Inserted),
+                None => self.upsert(tx, index, info, None).await?,
+            };
+            node_ids.insert(
+                spec.node_key.clone(),
+                Endpoint {
+                    id,
+                    type_id: info.id,
+                },
+            );
+            outcomes[index] = Some(outcome);
+        }
+        Ok(())
+    }
+
+    /// Node `index` on the item path.
+    async fn upsert(
+        &self,
+        tx: &impl DBRunner,
+        index: usize,
+        info: &TypeInfo,
+        known: Known<node::Model>,
+    ) -> Result<(i64, ItemOutcome), GraphStoreError> {
+        // Index-aligned with the request's nodes, by the port's contract. A
+        // missing entry would silently unembed a node, so it is a store
+        // failure rather than a default.
+        let decided = self.embedding.nodes.get(index).ok_or_else(|| {
+            GraphStoreError::Internal(format!(
+                "embedding plan covers {} nodes; the batch has {}",
+                self.embedding.nodes.len(),
+                self.request.nodes.len()
+            ))
+        })?;
+        upsert_node(
+            self.w,
+            tx,
+            &self.request.nodes[index],
+            info,
+            index,
+            PlannedVector {
+                decided,
+                active_epoch: self.embedding.epoch,
+            },
+            known,
+        )
+        .await
+    }
+}
+
 #[expect(
     clippy::too_many_arguments,
     reason = "one resolution step over the transaction's whole working state; bundling it would name a struct for a single call site"
@@ -2817,22 +2892,30 @@ async fn write_edges(
         checked.push((edge_key, index, src, dst));
     }
 
-    // The edges the up-front read found no row for, inserted together in key
-    // order, as `write_nodes` inserts new nodes: first occurrences only. A key
-    // a concurrent batch took in between is written by the item pass below.
-    let fresh: BTreeMap<String, i64> = {
-        let now = OffsetDateTime::now_utc();
-        let mut first = std::collections::BTreeSet::new();
-        let mut rows = Vec::new();
-        for (edge_key, index, src, dst) in &checked {
-            if !first.insert(edge_key.as_str()) || stored.contains_key(edge_key) {
-                continue;
-            }
-            let spec = &request.edges[*index];
-            let Some(info) = types.get(&spec.type_id) else {
-                continue;
-            };
-            rows.push(new_edge_row(
+    // The writes, in key order. New edges are inserted in runs, as
+    // `write_nodes` inserts new nodes: a first occurrence with no stored row
+    // joins the pending run, and the run is inserted before any edge written
+    // on its own and at the end, so no lock is taken out of key order. A key
+    // a concurrent batch took since the read is written on the item path
+    // right after its run.
+    let now = OffsetDateTime::now_utc();
+    let mut run: Vec<(usize, String, Endpoint, Endpoint, edge::ActiveModel)> = Vec::new();
+    for (edge_key, index, src, dst) in checked {
+        if w.budget.is_exhausted() {
+            return Err(GraphStoreError::Deadline);
+        }
+        let spec = &request.edges[index];
+        let info = types.get(&spec.type_id).ok_or_else(|| {
+            item_error(
+                index,
+                ItemFamily::Edge,
+                &spec.type_id,
+                "type is not registered".into(),
+            )
+        })?;
+        if !seen.contains(edge_key.as_str()) && !stored.contains_key(&edge_key) {
+            seen.insert(edge_key.clone());
+            let row = new_edge_row(
                 w,
                 spec,
                 NewEdge {
@@ -2847,40 +2930,11 @@ async fn write_edges(
                     declaring,
                     now,
                 },
-            ));
-        }
-        insert_new_rows::<edge::Entity>(
-            w.scope,
-            tx,
-            rows,
-            OnConflict::columns([edge::Column::TenantId, edge::Column::EdgeKey])
-                .do_nothing()
-                .to_owned(),
-            |row| (row.edge_key.clone(), row.id),
-        )
-        .await?
-    };
-
-    // Second pass, the writes left: updates, repeats and lost races, in key
-    // order.
-    for (edge_key, index, src, dst) in checked {
-        if w.budget.is_exhausted() {
-            return Err(GraphStoreError::Deadline);
-        }
-        if !seen.contains(edge_key.as_str()) && fresh.contains_key(&edge_key) {
-            seen.insert(edge_key);
-            outcomes[index] = Some(ItemOutcome::Inserted);
+            );
+            run.push((index, edge_key, src, dst, row));
             continue;
         }
-        let spec = &request.edges[index];
-        let info = types.get(&spec.type_id).ok_or_else(|| {
-            item_error(
-                index,
-                ItemFamily::Edge,
-                &spec.type_id,
-                "type is not registered".into(),
-            )
-        })?;
+        flush_new_edges(w, tx, request, types, declaring, &mut run, &mut outcomes).await?;
         outcomes[index] = Some(
             upsert_edge(
                 w,
@@ -2895,10 +2949,63 @@ async fn write_edges(
             .await?,
         );
     }
+    flush_new_edges(w, tx, request, types, declaring, &mut run, &mut outcomes).await?;
     for outcome in outcomes.into_iter().flatten() {
         changed |= tally.edge(&outcome);
     }
     Ok(changed)
+}
+
+/// Insert a pending run of new edges, then write on the item path, right
+/// after it, every edge of the run a concurrent batch took since the
+/// up-front read: `RETURNING` leaves it out.
+async fn flush_new_edges(
+    w: Writer<'_>,
+    tx: &impl DBRunner,
+    request: &IngestRequest,
+    types: &BTreeMap<String, TypeInfo>,
+    declaring: Option<(&str, &str)>,
+    run: &mut Vec<(usize, String, Endpoint, Endpoint, edge::ActiveModel)>,
+    outcomes: &mut [Option<ItemOutcome>],
+) -> Result<(), GraphStoreError> {
+    if run.is_empty() {
+        return Ok(());
+    }
+    let mut pending = Vec::with_capacity(run.len());
+    let mut rows = Vec::with_capacity(run.len());
+    for (index, key, src, dst, row) in run.drain(..) {
+        pending.push((index, key, src, dst));
+        rows.push(row);
+    }
+    let landed = insert_new_rows::<edge::Entity>(
+        w.scope,
+        tx,
+        rows,
+        OnConflict::columns([edge::Column::TenantId, edge::Column::EdgeKey])
+            .do_nothing()
+            .to_owned(),
+        |row| (row.edge_key.clone(), row.id),
+    )
+    .await?;
+    for (index, key, src, dst) in pending {
+        outcomes[index] = Some(if landed.contains_key(&key) {
+            ItemOutcome::Inserted
+        } else {
+            let spec = &request.edges[index];
+            upsert_edge(
+                w,
+                tx,
+                spec,
+                &types[&spec.type_id],
+                src.id,
+                dst.id,
+                declaring,
+                None,
+            )
+            .await?
+        });
+    }
+    Ok(())
 }
 
 /// A recorded receipt for this key, when the request matches it.

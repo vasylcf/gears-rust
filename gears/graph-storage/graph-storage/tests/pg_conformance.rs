@@ -2707,3 +2707,68 @@ async fn a_key_lost_to_another_batch_during_the_bulk_insert_lands_as_an_update()
         "the edge is attached to the row that won, not to a row that was never inserted"
     );
 }
+
+/// Two batches, each carrying one node and an edge to the other's node,
+/// which it does not carry and so materializes as a phantom. Each batch
+/// writes both keys, one as a node and one as a phantom; if either took its
+/// locks out of key order -- its new nodes in bulk ahead of a phantom with a
+/// smaller key -- the two would wait on each other and the server would
+/// break the deadlock by failing one. Every batch must land (gears-rust
+/// #5040, the ordering of #5042).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn batches_whose_nodes_are_each_others_phantoms_all_land() {
+    let Some(stand) = stand().await else {
+        return;
+    };
+    let tenant = tenant_on(&stand).await;
+    let scope = AccessScope::for_tenant(tenant);
+    let ctx = conformance::ctx(tenant, &scope, None);
+    stand
+        .store
+        .register_types(&ctx, conformance::ontology_batch())
+        .await
+        .expect("the ontology registers");
+
+    for round in 0..30 {
+        // `a` sorts before `z`: the first batch writes a node then a phantom,
+        // the second a phantom then a node, both in key order.
+        let (a, z) = (format!("cross-{round}-a"), format!("cross-{round}-z"));
+        let writers: Vec<_> = [(a.clone(), z.clone()), (z.clone(), a.clone())]
+            .into_iter()
+            .map(|(carried, named)| {
+                let store = Arc::clone(&stand.store);
+                tokio::spawn(async move {
+                    let scope = AccessScope::for_tenant(tenant);
+                    let ctx = conformance::ctx(tenant, &scope, None);
+                    conformance::ingest_batch(
+                        store.as_ref(),
+                        &ctx,
+                        conformance::batch(
+                            vec![conformance::node(&carried, "carried")],
+                            vec![conformance::edge(&carried, &named)],
+                        ),
+                    )
+                    .await
+                })
+            })
+            .collect();
+        for writer in writers {
+            writer
+                .await
+                .expect("the writer task does not panic")
+                .unwrap_or_else(|error| panic!("round {round}: a batch failed: {error:?}"));
+        }
+        for key in [&a, &z] {
+            let view = stand
+                .store
+                .get_node(&ctx, key, 10)
+                .await
+                .expect("both keys exist");
+            assert_eq!(
+                view.adjacency.len(),
+                2,
+                "round {round}: {key} has both edges"
+            );
+        }
+    }
+}
