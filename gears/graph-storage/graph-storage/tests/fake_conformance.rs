@@ -718,3 +718,13 @@ async fn overlapping_batches_all_land() {
 async fn a_count_agrees_with_the_listing() {
     conformance::a_count_agrees_with_the_listing(&store(), Uuid::now_v7()).await;
 }
+
+#[tokio::test]
+async fn a_hubs_edges_are_listed_a_page_at_a_time() {
+    conformance::a_hubs_edges_are_listed_a_page_at_a_time(&store(), Uuid::now_v7()).await;
+}
+
+#[tokio::test]
+async fn edge_payloads_are_read_for_live_edges_only() {
+    conformance::edge_payloads_are_read_for_live_edges_only(&store(), Uuid::now_v7()).await;
+}

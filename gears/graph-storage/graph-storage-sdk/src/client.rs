@@ -10,10 +10,10 @@ use toolkit_canonical_errors::CanonicalError;
 use toolkit_security::SecurityContext;
 
 use crate::models::{
-    DeleteOutcome, EdgeKey, GraphRevision, GtsTypeId, IngestOutcome, IngestRequest,
-    NeighborhoodRequest, NodeCount, NodeKey, NodeRow, NodeView, Page, RegisteredType,
-    SearchRequest, SearchResponse, TraversalResponse, TraverseRequest, TypeQuery, TypeRecord,
-    TypeRegistration, TypeRegistrationOptions,
+    DeleteOutcome, EdgeKey, EdgeView, GraphRevision, GtsTypeId, IngestOutcome, IngestRequest,
+    NeighborhoodRequest, NodeCount, NodeEdgesRequest, NodeKey, NodeRow, NodeView, Page,
+    RegisteredType, SearchRequest, SearchResponse, TraversalResponse, TraverseRequest, TypeQuery,
+    TypeRecord, TypeRegistration, TypeRegistrationOptions,
 };
 
 /// Object-safe client for in-process consumption by other gears (version 1).
@@ -152,6 +152,38 @@ pub trait GraphStorageClientV1: Send + Sync {
     ) -> Result<DeleteOutcome, CanonicalError>;
 
     // --- read -------------------------------------------------------------
+
+    /// One live edge with its payload and envelope, when both its endpoints
+    /// are visible. The read REST has as `GET /edges/{edge_key}`.
+    ///
+    /// The provided implementation refuses as `unimplemented`, so other
+    /// implementations of this trait keep compiling.
+    async fn get_edge(
+        &self,
+        ctx: &SecurityContext,
+        edge_key: &EdgeKey,
+    ) -> Result<EdgeView, CanonicalError> {
+        let _ = (ctx, edge_key);
+        Err(crate::client_no_target::unimplemented(
+            "this GraphStorageClientV1 implementation does not support the edge read",
+        ))
+    }
+
+    /// One page of the edges incident to a node, with payloads and envelopes:
+    /// a hub's edges in full, past `node_read_max_adjacency`. Continue with
+    /// the page's `next_cursor`.
+    ///
+    /// The provided implementation refuses as `unimplemented`.
+    async fn list_node_edges(
+        &self,
+        ctx: &SecurityContext,
+        request: NodeEdgesRequest,
+    ) -> Result<Page<EdgeView>, CanonicalError> {
+        let _ = (ctx, request);
+        Err(crate::client_no_target::unimplemented(
+            "this GraphStorageClientV1 implementation does not support the edge listing",
+        ))
+    }
 
     /// Node by key with payload and bounded bidirectional adjacency.
     /// `adjacency_limit = None` uses the configured default.

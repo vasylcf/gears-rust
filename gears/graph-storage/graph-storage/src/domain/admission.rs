@@ -408,6 +408,7 @@ pub fn admit_traverse(
         max_nodes,
         direction: _,
         edge_discriminators,
+        include_edge_payload: _,
     } = request;
     let depth = *depth;
     if seeds.is_empty() {
@@ -486,6 +487,7 @@ pub fn admit_neighborhood(
         node_budget,
         include_phantoms: _,
         direction: _,
+        include_edge_payload: _,
     } = request;
     let depth = *depth;
     // The same ceiling bounded walks use, and for the same reason: both drive
@@ -568,6 +570,71 @@ fn fnv1a_64(bytes: &[u8]) -> u64 {
     bytes.iter().fold(BASIS, |hash, &byte| {
         (hash ^ u64::from(byte)).wrapping_mul(PRIME)
     })
+}
+
+/// What an edge-listing cursor is bound to: the node, the direction and the
+/// filters as the caller spelled them, sorted. A cursor carries the storage
+/// id the previous page ended on, and that position means something only in
+/// the listing that produced it -- replayed under another node or another
+/// filter it would skip edges or start mid-way without saying so.
+///
+/// The patterns are bound, not the types they resolved to, so a type
+/// registered between two pages does not invalidate a cursor; the new type's
+/// edges simply appear on the pages still to come.
+#[must_use]
+pub fn edge_listing_identity(
+    node_key: &str,
+    direction: graph_storage_sdk::models::Direction,
+    edge_type_patterns: &[String],
+    discriminators: &[String],
+) -> String {
+    let mut patterns: Vec<&str> = edge_type_patterns.iter().map(String::as_str).collect();
+    patterns.sort_unstable();
+    patterns.dedup();
+    let mut discriminators: Vec<&str> = discriminators.iter().map(String::as_str).collect();
+    discriminators.sort_unstable();
+    discriminators.dedup();
+    let mut text = format!("{node_key}\n{direction:?}\n");
+    for pattern in patterns {
+        text.push_str(pattern);
+        text.push('\n');
+    }
+    text.push('\n');
+    for discriminator in discriminators {
+        text.push_str(discriminator);
+        text.push('\n');
+    }
+    format!("{:016x}", fnv1a_64(text.as_bytes()))
+}
+
+/// The cursor that continues an edge listing after the edge with storage id
+/// `after`.
+#[must_use]
+pub fn edge_cursor(after: i64, identity: &str) -> String {
+    format!("{after}.{identity}")
+}
+
+/// The storage id an edge-listing cursor continues after.
+///
+/// # Errors
+///
+/// [`DomainError::InvalidArgument`] when the cursor is not one this listing
+/// minted: malformed, or minted for another node, direction or filter.
+pub fn edge_cursor_position(cursor: &str, identity: &str) -> Result<i64, DomainError> {
+    let parsed = cursor
+        .split_once('.')
+        .and_then(|(after, bound)| Some((after.parse::<i64>().ok()?, bound)));
+    match parsed {
+        Some((after, bound)) if bound == identity && after >= 0 => Ok(after),
+        Some(_) => Err(DomainError::invalid(
+            "the cursor was minted by another edge listing; send the same node_key, \
+             direction, edge_type_pattern and discriminator it was minted with, or \
+             start again without a cursor",
+        )),
+        None => Err(DomainError::invalid(
+            "the cursor is not an edge-listing cursor",
+        )),
+    }
 }
 
 /// A page is the continuation of the listing that minted its cursor, and
@@ -887,6 +954,7 @@ mod tests {
             node_budget: None,
             include_phantoms: true,
             direction: None,
+            include_edge_payload: false,
         }
     }
 
@@ -1043,6 +1111,7 @@ mod tests {
             max_nodes: None,
             direction: None,
             edge_discriminators: Vec::new(),
+            include_edge_payload: false,
         };
         for depth in 0..=8u8 {
             assert_eq!(

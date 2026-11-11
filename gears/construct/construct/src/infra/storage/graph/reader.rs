@@ -85,6 +85,7 @@ pub(crate) async fn read_stored(
         // Both directions and every relation, as before these existed.
         direction: None,
         edge_discriminators: Vec::new(),
+        include_edge_payload: false,
     };
     // Without a snapshot, the root and the facts may come from different
     // graph states: a fresh version with stale facts would pass the write's

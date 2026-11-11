@@ -24,6 +24,12 @@ struct TargetTenantError;
 /// implementation that cannot honour a target tenant.
 pub struct NoTargetTenant;
 
+/// The `unimplemented` error a provided client method answers with when the
+/// implementation does not override it.
+pub fn unimplemented(message: &'static str) -> CanonicalError {
+    TargetTenantError::unimplemented(message).create()
+}
+
 fn refused() -> CanonicalError {
     TargetTenantError::unimplemented(
         "this GraphStorageClientV1 implementation does not support a target tenant",

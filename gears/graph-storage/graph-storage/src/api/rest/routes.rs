@@ -274,6 +274,67 @@ fn write_routes(router: Router, openapi: &dyn OpenApiRegistry) -> Router {
         .register(router, openapi)
 }
 
+/// A node's edges, a page at a time.
+fn edge_list_route(router: Router, openapi: &dyn OpenApiRegistry) -> Router {
+    OperationBuilder::get(format!("{BASE}/nodes/{{node_key}}/edges"))
+        .operation_id("graph_storage.list_node_edges")
+        .summary("A node's edges, a page at a time")
+        .description(
+            "Every live edge incident to the node, with payload and audit \
+             envelope, in storage order: the full edge set of a hub whose node \
+             read stops at `node_read_max_adjacency`. An edge is listed only \
+             when both its endpoints are visible to the caller. Keep paging \
+             while `next_cursor` is non-null, even when `items` is short or \
+             empty: a skipped edge still moves the position. The cursor is \
+             bound to the node, `direction`, `edge_type_pattern` and \
+             `discriminator`, and refused under others.",
+        )
+        .tag(API_TAG)
+        .authenticated()
+        .require_license_features::<License>([])
+        .path_param("node_key", "Producer-supplied node key")
+        .query_param(
+            "direction",
+            false,
+            "`outgoing`, `incoming` or `either` (the default)",
+        )
+        .query_param(
+            "edge_type_pattern",
+            false,
+            "GTS pattern the edge type must match; repeat for several",
+        )
+        .query_param(
+            "discriminator",
+            false,
+            "Discriminator the edge must carry; repeat for several",
+        )
+        .query_param_typed(
+            "limit",
+            false,
+            "Page size, at most edge_list_max_page (also the default)",
+            "integer",
+        )
+        .query_param(
+            "cursor",
+            false,
+            "Continuation token from a previous page's `next_cursor`",
+        )
+        .query_param_typed("tenant", false, TENANT_PARAM, "string")
+        .handler(handlers::list_node_edges)
+        .json_response_with_schema::<dto::GraphEdgeListDto>(
+            openapi,
+            http::StatusCode::OK,
+            "One page of the node's edges",
+        )
+        .error_400(openapi)
+        .error_401(openapi)
+        .error_403(openapi)
+        .error_404(openapi)
+        .error_500(openapi)
+        .error_503(openapi)
+        .register(router, openapi)
+}
+
 /// Node read, tabular projection and the revision surface.
 fn read_routes(router: Router, openapi: &dyn OpenApiRegistry) -> Router {
     let router = OperationBuilder::get(format!("{BASE}/nodes/{{node_key}}"))
@@ -317,6 +378,8 @@ fn read_routes(router: Router, openapi: &dyn OpenApiRegistry) -> Router {
         .error_500(openapi)
         .error_503(openapi)
         .register(router, openapi);
+
+    let router = edge_list_route(router, openapi);
 
     let router = OperationBuilder::get(format!("{BASE}/nodes:count"))
         .operation_id("graph_storage.count_nodes")
