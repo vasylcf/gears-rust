@@ -78,7 +78,7 @@ COMMA := ,
 EXAMPLE_SERVER_BIN ?= cf-gears-example-server
 EXAMPLE_SERVER_DEBUG_BINARY ?= target/debug/$(EXAMPLE_SERVER_BIN)
 EXAMPLE_SERVER_MANIFEST ?= apps/cf-gears-example-server/Cargo.toml
-EXAMPLE_SERVER_FEATURE_EXCLUDES ?= default fips k8s otel oop-example timescaledb-usage-collector clickhouse-usage-collector magika graph-storage quota-enforcement
+EXAMPLE_SERVER_FEATURE_EXCLUDES ?= default fips k8s otel oop-example timescaledb-usage-collector clickhouse-usage-collector magika graph-storage construct quota-enforcement
 EXAMPLE_SERVER_ALL_FEATURES := $(strip $(shell cargo gears ls features --manifest $(EXAMPLE_SERVER_MANIFEST) 2>/dev/null))
 EXAMPLE_SERVER_FEATURES ?= $(subst $(SPACE),$(COMMA),$(filter-out $(EXAMPLE_SERVER_FEATURE_EXCLUDES),$(EXAMPLE_SERVER_ALL_FEATURES)))
 EXAMPLE_SERVER_FEATURE_ARGS ?= $(if $(EXAMPLE_SERVER_FEATURES),--features $(EXAMPLE_SERVER_FEATURES),)
@@ -301,6 +301,8 @@ GEAR_SERVER_OPTIONAL_FEATURES := $(if $(GEAR_HAS_SERVER_FEATURE),$(filter-out $(
 # Extra local-dev plugins a gear needs to start (GEAR_SERVER_EXTRA_FEATURES_<gear>).
 # mini-chat registers OAGW upstreams whose secret_ref OAGW checks in credstore.
 GEAR_SERVER_EXTRA_FEATURES_mini-chat ?= static-credstore
+# construct stores its facts in graph storage, which needs PostgreSQL (see gears/construct/QUICKSTART.md).
+GEAR_SERVER_EXTRA_FEATURES_construct ?= graph-storage
 GEAR_SERVER_EXTRA_FEATURES := $(GEAR_SERVER_EXTRA_FEATURES_$(GEAR))
 GEAR_SERVER_FEATURES ?= $(GEAR_SERVER_OPTIONAL_FEATURES)$(if $(GEAR_SERVER_OPTIONAL_FEATURES),$(COMMA),)$(GEAR_SERVER_BASE_FEATURES)$(if $(GEAR_SERVER_EXTRA_FEATURES),$(COMMA)$(GEAR_SERVER_EXTRA_FEATURES),)
 GEAR_SERVER_FEATURE_ARGS := $(if $(GEAR),$(if $(GEAR_HAS_SERVER_FEATURE),--no-default-features --features $(GEAR_SERVER_FEATURES),),$(EXAMPLE_SERVER_FEATURE_ARGS))
@@ -398,7 +400,7 @@ arch_status_svg_update: py-env
 
 # -------- Tests --------
 
-.PHONY: test-no-macros test-macros test-db test-integration test-graph-storage test-graph-storage-pg test-cluster-k8s coverage-cluster-k8s test-durable-execution-pg coverage-durable-execution-pg test-eb-pg test-eb-sqlite test-eb-mysql test-eb-mariadb test-eb-kafka test-github-mirror-db test-github-mirror-scale test-fips
+.PHONY: test-no-macros test-macros test-db test-integration test-graph-storage test-graph-storage-pg test-cluster-k8s coverage-cluster-k8s test-durable-execution-pg coverage-durable-execution-pg test-eb-pg test-eb-sqlite test-eb-mysql test-eb-mariadb test-eb-kafka test-github-mirror-db test-fips
 
 # Run the workspace tests except the macro test crates (CI test job)
 test-no-macros: install-tools
@@ -835,6 +837,8 @@ test-fips: install-tools
 	$(call print_target_banner)
 	cargo test -p cf-gears-toolkit-security --features fips,jwt,internal-auth-cache --lib --test jwt_no_backend_fallback
 	cargo test -p cf-gears-toolkit-auth --features toolkit-security/fips --lib providers::jwks
+	cargo test -p cf-gears-toolkit-contract --features fips --lib runtime::config
+	cargo test -p cf-gears-toolkit-contract --features fips --test wiring_config
 	cargo nextest run -p cf-gears-toolkit -p cf-gears-toolkit-http -p cf-gears-toolkit-http-proxy -p cf-gears-oagw -p cf-gears-clickhouse-usage-collector-plugin \
 		--features cf-gears-toolkit/bootstrap,cf-gears-toolkit/fips,cf-gears-toolkit-http/fips,cf-gears-toolkit-http-proxy/fips,cf-gears-oagw/fips
 
@@ -857,11 +861,6 @@ test-github-mirror-db: install-tools
 	GM_TEST_DATABASE_URL=$(GM_MARIADB_URL) cargo nextest run -p cf-gears-github-mirror --features integration --no-fail-fast; maria=$$?; \
 	docker rm -f gm-test-postgres gm-test-mariadb >/dev/null; \
 	test $$pg -eq 0 && test $$maria -eq 0
-
-## Run the github-mirror gear's 110,000-entity interrupt-and-resume test (SQLite, minutes)
-test-github-mirror-scale: install-tools
-	$(call print_target_banner)
-	cargo nextest run -p cf-gears-github-mirror --test scale_resume_test --run-ignored ignored-only
 
 ## Cross-compile gate for the Windows+FIPS path (Windows handshake
 ## verification is the manual runbook in cf-gears-fips-probe/README.md). Catches
