@@ -699,9 +699,14 @@ async fn endpoint_types(
         .collect())
 }
 
-/// How many keys one prefetch statement carries: far below the server's bind
-/// parameter limit, and few statements for any batch the admission bounds
-/// allow.
+/// How many keys one up-front read carries, and how many rows one bulk insert
+/// carries.
+///
+/// Both are bounded by the server's 65 535 bind parameters: a key is one, a
+/// node row about two dozen, so a thousand rows stay near a third of it. The
+/// size does not bound what a batch locks -- every row a statement writes
+/// stays locked until the transaction ends, however the batch is split -- so
+/// the one constant sets only how many statements a batch takes.
 const PREFETCH_CHUNK: usize = 1_000;
 
 /// The live nodes named by `keys`, read in one statement per
@@ -1362,19 +1367,18 @@ where
     while !rest.is_empty() {
         let take = PREFETCH_CHUNK.min(rest.len());
         let chunk: Vec<E::ActiveModel> = rest.drain(..take).collect();
-        let inserted = E::insert_many(chunk)
+        // Unlike the single-row insert, a chunk whose every row lost its race
+        // is not an error: the returning select reads all rows, and none is
+        // an empty answer.
+        let models = E::insert_many(chunk)
             .secure()
             .scope_unchecked(scope)
             .map_err(map_scope_err)?
             .on_conflict_raw(conflict.clone())
             .exec_with_returning(tx)
-            .await;
-        match inserted {
-            Ok(models) => landed.extend(models.iter().map(&key_and_id)),
-            // Every row of the chunk lost its race: nothing came back.
-            Err(error) if lost_insert_race(&error) => {}
-            Err(error) => return Err(map_scope_err(error)),
-        }
+            .await
+            .map_err(map_scope_err)?;
+        landed.extend(models.iter().map(&key_and_id));
     }
     Ok(landed)
 }
