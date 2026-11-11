@@ -2772,3 +2772,135 @@ async fn batches_whose_nodes_are_each_others_phantoms_all_land() {
         }
     }
 }
+
+/// The edge half of the lost race: an edge key another batch inserts between
+/// this batch's up-front read and its bulk insert is written on the item path,
+/// as an update of that row, and stays one row (gears-rust #5040). The other
+/// batch is a plain transaction holding an uncommitted edge under the key the
+/// store derives, so the bulk insert waits on it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_edge_lost_to_another_batch_during_the_bulk_insert_lands_as_an_update() {
+    use graph_storage_sdk::models::ItemOutcome;
+    use sea_orm::{ConnectionTrait as _, TransactionTrait as _};
+
+    let Some(stand) = stand().await else {
+        return;
+    };
+    let tenant = tenant_on(&stand).await;
+    let scope = AccessScope::for_tenant(tenant);
+    let ctx = conformance::ctx(tenant, &scope, None);
+    stand
+        .store
+        .register_types(&ctx, conformance::ontology_batch())
+        .await
+        .expect("the ontology registers");
+    conformance::ingest_batch(
+        stand.store.as_ref(),
+        &ctx,
+        conformance::batch(
+            vec![
+                conformance::node("edge-race-a", "a"),
+                conformance::node("edge-race-b", "b"),
+            ],
+            Vec::new(),
+        ),
+    )
+    .await
+    .expect("the endpoints exist");
+
+    let raw = sea_orm::Database::connect(&stand.dsn)
+        .await
+        .expect("a plain connection for the other batch");
+    let type_uuid: Uuid = raw
+        .query_one_raw(sea_orm::Statement::from_string(
+            sea_orm::DatabaseBackend::Postgres,
+            format!(
+                "SELECT gts_type_uuid AS u FROM gts_type WHERE tenant_id = '{tenant}' \
+                 AND gts_type_id = '{}'",
+                conformance::LINK
+            ),
+        ))
+        .await
+        .expect("the type reads")
+        .expect("the link type is registered")
+        .try_get("", "u")
+        .expect("a uuid");
+    let mut spec = conformance::edge("edge-race-a", "edge-race-b");
+    let key = graph_storage::domain::identity::derive_edge_key(type_uuid, &spec);
+
+    let holder = raw.begin().await.expect("the holder begins");
+    holder
+        .execute_unprepared(&format!(
+            "INSERT INTO edge (tenant_id, edge_key, gts_edge_type_id, src_node_id, dst_node_id) \
+             SELECT '{tenant}', '{key}', t.id, a.id, b.id FROM gts_type t, node a, node b \
+             WHERE t.tenant_id = '{tenant}' AND t.gts_type_id = '{link}' \
+             AND a.tenant_id = '{tenant}' AND a.node_key = 'edge-race-a' \
+             AND b.tenant_id = '{tenant}' AND b.node_key = 'edge-race-b'",
+            link = conformance::LINK
+        ))
+        .await
+        .expect("the holder inserts the edge and keeps it uncommitted");
+
+    spec.payload = Some(serde_json::json!({ "from": "the batch" }));
+    let writer = {
+        let store = Arc::clone(&stand.store);
+        tokio::spawn(async move {
+            let scope = AccessScope::for_tenant(tenant);
+            let ctx = conformance::ctx(tenant, &scope, None);
+            let mut request = conformance::batch(Vec::new(), vec![spec]);
+            request.options.report_per_item = true;
+            conformance::ingest_batch(store.as_ref(), &ctx, request).await
+        })
+    };
+
+    let waiting = sea_orm::Statement::from_string(
+        sea_orm::DatabaseBackend::Postgres,
+        "SELECT count(*)::bigint AS n FROM pg_stat_activity \
+         WHERE wait_event_type = 'Lock' AND datname = current_database()"
+            .to_owned(),
+    );
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
+    loop {
+        let row = raw
+            .query_one_raw(waiting.clone())
+            .await
+            .expect("the activity view reads")
+            .expect("a count is one row");
+        if row.try_get::<i64>("", "n").expect("the count is a number") > 0 {
+            break;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the bulk insert never waited on the held edge"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    holder.commit().await.expect("the holder commits");
+
+    let outcome = writer
+        .await
+        .expect("the writer task does not panic")
+        .expect("the batch lands over the other batch's edge");
+    assert_eq!(
+        outcome.per_item_edges,
+        Some(vec![ItemOutcome::Updated]),
+        "the lost edge is an update"
+    );
+    let rows = raw
+        .query_one_raw(sea_orm::Statement::from_string(
+            sea_orm::DatabaseBackend::Postgres,
+            format!(
+                "SELECT count(*)::bigint AS n, max(payload ->> 'from') AS f FROM edge \
+                 WHERE tenant_id = '{tenant}' AND edge_key = '{key}'"
+            ),
+        ))
+        .await
+        .expect("the edge reads")
+        .expect("one row");
+    assert_eq!(rows.try_get::<i64>("", "n").expect("a count"), 1, "one row");
+    assert_eq!(
+        rows.try_get::<String>("", "f").expect("a payload"),
+        "the batch",
+        "the batch's write is the one that stands"
+    );
+}
