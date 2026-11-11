@@ -761,6 +761,52 @@ mod rest {
         }
     }
 
+    /// A refused tenant answers 404, so every operation that takes `?tenant=`
+    /// declares a 404 in the `OpenAPI` document, and generated clients know the
+    /// refusal. Read off the operations the routes register, not a list kept
+    /// by hand.
+    #[test]
+    fn every_operation_that_takes_a_tenant_declares_not_found() {
+        #[derive(Default)]
+        struct Recorder(std::sync::Mutex<Vec<toolkit::api::OperationSpec>>);
+        impl toolkit::api::OpenApiRegistry for Recorder {
+            fn register_operation(&self, spec: &toolkit::api::OperationSpec) {
+                self.0.lock().expect("not poisoned").push(spec.clone());
+            }
+            fn ensure_schema_raw(
+                &self,
+                name: &str,
+                _schemas: Vec<(
+                    String,
+                    utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
+                )>,
+            ) -> String {
+                name.to_owned()
+            }
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
+            }
+        }
+
+        let harness = Harness::allowed();
+        let recorder = Recorder::default();
+        let _router = register_routes(Router::new(), &recorder, Arc::clone(&harness.services));
+        let specs = recorder.0.lock().expect("not poisoned");
+        let targeted: Vec<_> = specs
+            .iter()
+            .filter(|spec| spec.params.iter().any(|param| param.name == "tenant"))
+            .collect();
+        assert_eq!(targeted.len(), 17, "the routes that take ?tenant=");
+        for spec in targeted {
+            assert!(
+                spec.responses.iter().any(|response| response.status == 404),
+                "{} {} takes ?tenant= and declares no 404",
+                spec.method,
+                spec.path
+            );
+        }
+    }
+
     /// The query parameter is the in-process `in_tenant` over HTTP: a granted
     /// tenant answers, a refused and an unknown one answer the same 404, and
     /// a value that is not a tenant id is the caller's mistake.
