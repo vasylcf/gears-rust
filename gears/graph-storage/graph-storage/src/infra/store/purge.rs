@@ -1,0 +1,104 @@
+//! Purge: a node and every edge incident to it removed for good
+//! (gears-rust #5194).
+//!
+//! A soft delete keeps the row -- payload, search text and vector included --
+//! and the key with it; scope replacement removes rows, but only what a
+//! producer stops declaring. Purge is the one call that removes a single
+//! node's data on request, which an erasure obligation needs. It takes a live
+//! node or a tombstoned one, so the tombstones soft deletes left behind can be
+//! erased afterwards.
+//!
+//! Every incident edge goes first -- static, analysis, live or tombstoned --
+//! because the endpoint foreign keys are `ON DELETE RESTRICT` and because an
+//! erasure outranks a conclusion drawn about what it erases. Then the node.
+//! An edge another batch attaches between the two statements makes the node
+//! delete fail on the foreign key, which is a conflict the caller retries,
+//! never a node removed from under a live edge.
+
+use graph_storage_sdk::models::{GraphRevision, NodeKey, PurgeOutcome};
+use graph_storage_sdk::plugin_api::{GraphStoreError, StoreCtx};
+use sea_orm::{ColumnTrait, Condition, EntityTrait, QueryFilter};
+use toolkit_db::secure::{SecureDeleteExt, SecureEntityExt};
+
+use crate::infra::projections::{NodeIdent, node_ident_columns};
+use crate::infra::storage::entity::{edge, node};
+use crate::infra::store::ingest::{bump_revision, current_revision, source_epoch};
+use crate::infra::store::{PgGraphStore, TxStoreError, map_scope_err};
+
+pub async fn purge_node(
+    store: &PgGraphStore,
+    ctx: &StoreCtx<'_>,
+    key: NodeKey,
+) -> Result<PurgeOutcome, GraphStoreError> {
+    let tenant = ctx.tenant;
+    let scope = ctx.scope.clone();
+    store
+        .db()
+        .transaction_ref_mapped::<_, PurgeOutcome, TxStoreError>(move |tx| {
+            let key = key.clone();
+            let scope = scope.clone();
+            Box::pin(async move {
+                let epoch = source_epoch(&scope, tx).await?;
+                // Live or tombstoned: both hold the key and the data.
+                let stored = node::Entity::find()
+                    .secure()
+                    .scope_with(&scope)
+                    .filter(Condition::all().add(node::Column::NodeKey.eq(key)))
+                    .limit(1)
+                    .project_all(tx, |query| {
+                        node_ident_columns(query).into_model::<NodeIdent>()
+                    })
+                    .await
+                    .map_err(map_scope_err)?
+                    .into_iter()
+                    .next();
+                let Some(stored) = stored else {
+                    return Ok(PurgeOutcome {
+                        revision: GraphRevision {
+                            source_epoch: epoch,
+                            revision: current_revision(&scope, tx).await?,
+                        },
+                        purged_nodes: 0,
+                        purged_edges: 0,
+                    });
+                };
+
+                let purged_edges = edge::Entity::delete_many()
+                    .filter(
+                        Condition::any()
+                            .add(edge::Column::SrcNodeId.eq(stored.id))
+                            .add(edge::Column::DstNodeId.eq(stored.id)),
+                    )
+                    .secure()
+                    .scope_with(&scope)
+                    .exec(tx)
+                    .await
+                    .map_err(map_scope_err)?
+                    .rows_affected;
+                let purged_nodes = node::Entity::delete_many()
+                    .filter(Condition::all().add(node::Column::Id.eq(stored.id)))
+                    .secure()
+                    .scope_with(&scope)
+                    .exec(tx)
+                    .await
+                    .map_err(map_scope_err)?
+                    .rows_affected;
+
+                let revision = if purged_nodes + purged_edges > 0 {
+                    bump_revision(tenant, &scope, tx).await?
+                } else {
+                    current_revision(&scope, tx).await?
+                };
+                Ok(PurgeOutcome {
+                    revision: GraphRevision {
+                        source_epoch: epoch,
+                        revision,
+                    },
+                    purged_nodes,
+                    purged_edges,
+                })
+            })
+        })
+        .await
+        .map_err(|TxStoreError(error)| error)
+}

@@ -2322,10 +2322,29 @@ its chunks, its labels and its provenance stay in place.
    and deleting the node takes its edges with it (rule 2). Held by
    `a_deleted_edge_is_revived_by_the_next_upsert` against both stores.
 
-Undelete and a retention job that hard-deletes past a configurable window are
-p2. They are separated deliberately: the tombstone is reversible and cheap,
-while purge has to decide cascade ordering, key reuse and index reconciliation,
-and none of those need to block v1.
+**Purge removes for good** (gears-rust #5194). `DELETE /nodes/{node_key}?mode=purge`,
+`GraphStorageClientV1::purge_node`, authorized as its own action `purge`, removes
+a node -- live or tombstoned -- and every edge incident to it in one transaction:
+the edges first, static, analysis, live and tombstoned alike, because the
+endpoint foreign keys are `ON DELETE RESTRICT` and an erasure outranks a
+conclusion drawn about what it erases; then the node. The key is free again,
+the revision advances once, and a key with no stored node is no change: the
+SDK answers `purged_nodes: 0` and REST answers `204` either way, so a retry after
+an unknown outcome is answered as the first call was. An edge another batch
+attaches between the two statements makes the node delete fail on the foreign
+key, a conflict the caller retries. Purge is the way to erase the tombstones
+deletes left: rule 4's key comes back with it, and rule 5's index entries go
+with the row. What the gear removes is the rows; dead tuples until `VACUUM`,
+WAL and backups follow the deployment's retention, so "gone from all storage
+within N days" is a deployment property, not this call's.
+
+**A scope replacement removes tombstoned members too.** A tombstone keeps its
+payload, search text and vector, and an empty replacement is the scope's
+erasure, so a member deleted before it is removed with the live ones -- the
+same rules apply, a live analysis edge still keeps its endpoint.
+
+Undelete and a retention job that purges tombstones past a configurable window
+remain p2; the job needs a window and a key-reuse policy of its own.
 
 ### Closed Enum Contract
 
@@ -3045,8 +3064,8 @@ which is not part of the ontology) to the `toolkit-gts` inventory
 (`graph_storage_sdk::gts`), as the other gears publish their type schemas: the
 ontology is the public contract producers derive from, and a process that links
 only the SDK publishes it too. The gear submits its permission instances (one
-`AuthzPermissionV1` per resource and action the PEP checks: node read, write
-and delete; type read and admin; `src/gts.rs`). Every permission's resource
+`AuthzPermissionV1` per resource and action the PEP checks: node read, write,
+delete and purge; type read and admin; `src/gts.rs`). Every permission's resource
 type is therefore in the registry, which the policy-engine requires of a policy
 naming it without a wildcard. types-registry seeds the inventory at its own startup,
 so producers can derive types and administrators can grant permissions before

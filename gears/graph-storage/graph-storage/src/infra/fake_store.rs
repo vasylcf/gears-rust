@@ -935,6 +935,34 @@ impl GraphStoreV1 for FakeGraphStore {
         })
     }
 
+    async fn purge_node(
+        &self,
+        ctx: &StoreCtx<'_>,
+        key: NodeKey,
+    ) -> Result<graph_storage_sdk::models::PurgeOutcome, GraphStoreError> {
+        let mut tenants = self.tenants.lock().map_err(|_| poisoned())?;
+        let tenant = tenants.entry(ctx.tenant).or_default();
+        // Live or tombstoned, as the built-in store: both hold the key.
+        let Some(position) = tenant.nodes.iter().position(|n| n.key == key) else {
+            return Ok(graph_storage_sdk::models::PurgeOutcome {
+                revision: self.revision_of(tenant),
+                purged_nodes: 0,
+                purged_edges: 0,
+            });
+        };
+        let id = tenant.nodes[position].id;
+        let before = tenant.edges.len();
+        tenant.edges.retain(|edge| edge.src != id && edge.dst != id);
+        let purged_edges = (before - tenant.edges.len()) as u64;
+        tenant.nodes.remove(position);
+        tenant.revision += 1;
+        Ok(graph_storage_sdk::models::PurgeOutcome {
+            revision: self.revision_of(tenant),
+            purged_nodes: 1,
+            purged_edges,
+        })
+    }
+
     async fn begin_read(&self, ctx: &StoreCtx<'_>) -> Result<ReadSnapshot, GraphStoreError> {
         assert!(
             !self.declines_snapshots,
@@ -2656,9 +2684,10 @@ fn replace_scope(
     let owner = (replace.attribute.clone(), replace.value.clone());
     let dropped: Vec<i64> = nodes
         .iter()
+        // Tombstoned members included: a tombstone keeps its payload and
+        // vector, and a replacement is the scope's erasure (gears-rust #5194).
         .filter(|node| {
-            !node.deleted
-                && managed_node_types.contains(&node.type_id)
+            managed_node_types.contains(&node.type_id)
                 && !written.contains(node.key.as_str())
                 && node
                     .payload

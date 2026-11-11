@@ -219,7 +219,7 @@ Several platform initiatives need to persist and query relationships between het
 - Cross-tenant or cross-graph federation queries
 - A bundled visualization UI — consumers build UIs on the projection API
 - Bitemporal versioning and node-level history — the graph reflects the latest ingested state; history is a future consideration
-- Undelete, and a retention job that hard-deletes tombstoned rows past a configurable window — both p2; hard delete additionally has to settle cascade ordering, key reuse after purge, and vector/full-text index reconciliation, none of which need to block v1
+- Undelete, and a retention job that hard-deletes tombstoned rows past a configurable window — both p2. Purge of one node on request is built (gears-rust #5194, DESIGN § Soft Delete Contract); the job still needs a window and a key-reuse policy
 - Whole-graph analytics computation — degree, PageRank, components, betweenness and community detection move to the `graph-analytics` gear (its ADR-0002); this gear stores the graph they read and annotates projections from their cache
 - Embedding model training or fine-tuning
 

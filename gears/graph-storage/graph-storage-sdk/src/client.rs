@@ -11,7 +11,7 @@ use toolkit_security::SecurityContext;
 
 use crate::models::{
     DeleteOutcome, EdgeKey, GraphRevision, GtsTypeId, IngestOutcome, IngestRequest,
-    NeighborhoodRequest, NodeCount, NodeKey, NodeRow, NodeView, Page, RegisteredType,
+    NeighborhoodRequest, NodeCount, NodeKey, NodeRow, NodeView, Page, PurgeOutcome, RegisteredType,
     SearchRequest, SearchResponse, TraversalResponse, TraverseRequest, TypeQuery, TypeRecord,
     TypeRegistration, TypeRegistrationOptions,
 };
@@ -150,6 +150,30 @@ pub trait GraphStorageClientV1: Send + Sync {
         ctx: &SecurityContext,
         edge_key: &EdgeKey,
     ) -> Result<DeleteOutcome, CanonicalError>;
+
+    /// Remove a node and every edge incident to it for good: the rows are
+    /// deleted, not tombstoned, and the key is free again (gears-rust #5194).
+    ///
+    /// It takes a live node or one already soft-deleted, so the tombstones a
+    /// `delete_node` left can be erased afterwards. A key with no stored node
+    /// is a success with `purged_nodes: 0`, so a retry after an unknown
+    /// outcome does not fail. Analysis edges go with the node: an erasure
+    /// outranks a conclusion. Authorized as its own action, `purge`, not as
+    /// `delete`. Dead tuples, WAL and backups follow the deployment's
+    /// retention, not this call.
+    ///
+    /// The provided implementation refuses as `unimplemented`, so other
+    /// implementations of this trait keep compiling.
+    async fn purge_node(
+        &self,
+        ctx: &SecurityContext,
+        node_key: &NodeKey,
+    ) -> Result<PurgeOutcome, CanonicalError> {
+        let _ = (ctx, node_key);
+        Err(crate::client_no_target::unimplemented(
+            "this GraphStorageClientV1 implementation does not support purge",
+        ))
+    }
 
     // --- read -------------------------------------------------------------
 

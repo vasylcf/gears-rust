@@ -854,6 +854,20 @@ pub struct DeleteOutcome {
     pub tombstoned_edges: u64,
 }
 
+/// Outcome of a purge: what was removed for good (gears-rust #5194).
+///
+/// `purged_nodes` is 0 when no node, live or tombstoned, was stored under
+/// the key: a purge is idempotent, and purging what is not there is not an
+/// error.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PurgeOutcome {
+    pub revision: GraphRevision,
+    pub purged_nodes: u64,
+    /// Every edge incident to the node, live, tombstoned and analysis edges
+    /// alike: an erasure outranks a conclusion drawn about what it erases.
+    pub purged_edges: u64,
+}
+
 // ---------------------------------------------------------------------------
 // Node read / projection
 // ---------------------------------------------------------------------------

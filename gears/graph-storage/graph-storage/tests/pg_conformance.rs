@@ -429,6 +429,18 @@ pg_case!(
     conformance::a_stale_vector_stops_ranking_but_the_node_stays
 );
 pg_case!(
+    a_purge_removes_a_node_and_every_edge_and_frees_its_key,
+    conformance::a_purge_removes_a_node_and_every_edge_and_frees_its_key
+);
+pg_case!(
+    a_purge_takes_a_tombstone_and_repeats_as_no_change,
+    conformance::a_purge_takes_a_tombstone_and_repeats_as_no_change
+);
+pg_case!(
+    a_scope_erasure_removes_its_tombstoned_members,
+    conformance::a_scope_erasure_removes_its_tombstoned_members
+);
+pg_case!(
     only_the_active_epoch_ranks,
     conformance::only_the_active_epoch_ranks
 );

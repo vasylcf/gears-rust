@@ -7621,3 +7621,226 @@ pub async fn a_count_agrees_with_the_listing(store: &dyn GraphStoreV1, tenant: U
         .expect("the delete commits");
     assert_eq!(count("payload/severity eq 'high'", 100).await.count, 2);
 }
+
+// --- purge (gears-rust #5194) -------------------------------------------------
+
+/// The ontology plus the analysis edge type the purge cases attach.
+fn ontology_with_analysis() -> Vec<TypeRegistration> {
+    let mut types = ontology_batch();
+    types.push(TypeRegistration {
+        type_id: ANALYSIS.to_owned(),
+        schema: serde_json::json!({
+            "$id": format!("gts://{ANALYSIS}"),
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "allOf": [{ "$ref": "gts://gts.cf.core.graph.edge.v1~cf.core.graph.analysis_edge.v1~" }]
+        }),
+    });
+    types
+}
+
+fn concluded(src: &str, dst: &str) -> EdgeSpec {
+    EdgeSpec {
+        type_id: ANALYSIS.to_owned(),
+        src_node_key: src.to_owned(),
+        dst_node_key: dst.to_owned(),
+        payload: Some(serde_json::json!({
+            "provenance": {
+                "produced_by": {
+                    "subject_id": "00000000-0000-0000-0000-0000000000aa",
+                    "subject_type": "gts.cf.core.security.subject_service.v1~"
+                },
+                "method": "static-analysis"
+            }
+        })),
+        ..EdgeSpec::default()
+    }
+}
+
+/// A purge removes the node, its static and its analysis edges, advances the
+/// revision once, leaves the node in no read, and frees its key.
+pub async fn a_purge_removes_a_node_and_every_edge_and_frees_its_key(
+    store: &impl GraphStoreV1,
+    tenant: Uuid,
+) {
+    let scope = AccessScope::for_tenant(tenant);
+    let ctx = ctx(tenant, &scope, None);
+    store
+        .register_types(&ctx, ontology_with_analysis())
+        .await
+        .expect("the ontology registers");
+    ingest_batch(
+        store,
+        &ctx,
+        batch(
+            vec![
+                summarized("erased", "Erased fact", "a text about the erased fact"),
+                node("neighbour", "Neighbour"),
+                node("observer", "Observer"),
+            ],
+            vec![edge("erased", "neighbour"), concluded("observer", "erased")],
+        ),
+    )
+    .await
+    .expect("the batch commits");
+    let before = store.revision(&ctx).await.expect("revision reads");
+
+    let outcome = store
+        .purge_node(&ctx, "erased".to_owned())
+        .await
+        .expect("the purge commits");
+    assert_eq!(
+        (outcome.purged_nodes, outcome.purged_edges),
+        (1, 2),
+        "the node and both edges, the analysis edge included"
+    );
+    assert_eq!(outcome.revision.revision, before.revision + 1, "one change");
+
+    assert!(
+        matches!(
+            store.get_node(&ctx, &"erased".to_owned(), 10).await,
+            Err(GraphStoreError::NotFound)
+        ),
+        "the node reads as absent"
+    );
+    let neighbour = store
+        .get_node(&ctx, &"neighbour".to_owned(), 10)
+        .await
+        .expect("the neighbour stays");
+    assert!(neighbour.adjacency.is_empty(), "no edge is left behind");
+    assert!(
+        !search_vector(store, &ctx, "a text about the erased fact", EPOCH)
+            .await
+            .iter()
+            .any(|key| key == "erased"),
+        "the vector is gone with the row"
+    );
+
+    let mut again = batch(vec![node("erased", "Back again")], Vec::new());
+    again.options.report_per_item = true;
+    let outcome = ingest_batch(store, &ctx, again)
+        .await
+        .expect("the key is free");
+    assert_eq!(
+        outcome.per_item_nodes,
+        Some(vec![graph_storage_sdk::models::ItemOutcome::Inserted]),
+        "a purged key is inserted anew, not refused as tombstoned"
+    );
+}
+
+/// A tombstoned node is purged like a live one: the way to erase what soft
+/// deletes left behind. Purging what is not stored -- never, or again -- is
+/// no change and no error.
+pub async fn a_purge_takes_a_tombstone_and_repeats_as_no_change(
+    store: &impl GraphStoreV1,
+    tenant: Uuid,
+) {
+    let scope = AccessScope::for_tenant(tenant);
+    let ctx = ctx(tenant, &scope, None);
+    store
+        .register_types(&ctx, ontology_batch())
+        .await
+        .expect("the ontology registers");
+    ingest_batch(
+        store,
+        &ctx,
+        batch(
+            vec![node("gone", "Gone"), node("peer", "Peer")],
+            vec![edge("gone", "peer")],
+        ),
+    )
+    .await
+    .expect("the batch commits");
+    store
+        .soft_delete(&ctx, DeleteRequest::Node("gone".to_owned()))
+        .await
+        .expect("the soft delete commits");
+
+    let outcome = store
+        .purge_node(&ctx, "gone".to_owned())
+        .await
+        .expect("the tombstone is purged");
+    assert_eq!(
+        (outcome.purged_nodes, outcome.purged_edges),
+        (1, 1),
+        "the tombstoned node and its tombstoned edge"
+    );
+
+    let revision = store.revision(&ctx).await.expect("revision reads");
+    for key in ["gone", "never-stored"] {
+        let outcome = store
+            .purge_node(&ctx, key.to_owned())
+            .await
+            .expect("purging nothing is not an error");
+        assert_eq!(
+            (outcome.purged_nodes, outcome.purged_edges),
+            (0, 0),
+            "{key}"
+        );
+        assert_eq!(outcome.revision, revision, "{key}: no change, no revision");
+    }
+    let mut again = batch(vec![node("gone", "Back")], Vec::new());
+    again.options.report_per_item = true;
+    assert_eq!(
+        ingest_batch(store, &ctx, again)
+            .await
+            .expect("the key is free")
+            .per_item_nodes,
+        Some(vec![graph_storage_sdk::models::ItemOutcome::Inserted])
+    );
+}
+
+/// An empty replacement is its scope's erasure, and a member soft-deleted
+/// before it is erased with the rest: a tombstone keeps its payload and
+/// vector, and used to stay for good (gears-rust #5194).
+pub async fn a_scope_erasure_removes_its_tombstoned_members(
+    store: &impl GraphStoreV1,
+    tenant: Uuid,
+) {
+    let scope = AccessScope::for_tenant(tenant);
+    let ctx = ctx(tenant, &scope, None);
+    store
+        .register_types(&ctx, ontology_batch())
+        .await
+        .expect("the ontology registers");
+    ingest_batch(
+        store,
+        &ctx,
+        batch_replacing(
+            vec![
+                scoped_node("member", "acme/infra"),
+                scoped_node("tombstoned-member", "acme/infra"),
+            ],
+            Vec::new(),
+            1,
+        ),
+    )
+    .await
+    .expect("the scope lands");
+    store
+        .soft_delete(&ctx, DeleteRequest::Node("tombstoned-member".to_owned()))
+        .await
+        .expect("the member is tombstoned");
+
+    let outcome = ingest_batch(store, &ctx, batch_replacing(Vec::new(), Vec::new(), 2))
+        .await
+        .expect("the erasure commits");
+    assert_eq!(
+        outcome.counts.scope_removed_nodes, 2,
+        "the live member and the tombstoned one"
+    );
+
+    // The key is free only if the row is gone: a tombstone refuses it.
+    let mut again = batch(
+        vec![scoped_node("tombstoned-member", "acme/other")],
+        Vec::new(),
+    );
+    again.options.report_per_item = true;
+    assert_eq!(
+        ingest_batch(store, &ctx, again)
+            .await
+            .expect("the key is free after the erasure")
+            .per_item_nodes,
+        Some(vec![graph_storage_sdk::models::ItemOutcome::Inserted])
+    );
+}

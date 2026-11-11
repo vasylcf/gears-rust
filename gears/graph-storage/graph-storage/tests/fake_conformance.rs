@@ -103,6 +103,22 @@ async fn a_stale_vector_stops_ranking_but_the_node_stays() {
 }
 
 #[tokio::test]
+async fn a_purge_removes_a_node_and_every_edge_and_frees_its_key() {
+    conformance::a_purge_removes_a_node_and_every_edge_and_frees_its_key(&store(), Uuid::now_v7())
+        .await;
+}
+
+#[tokio::test]
+async fn a_purge_takes_a_tombstone_and_repeats_as_no_change() {
+    conformance::a_purge_takes_a_tombstone_and_repeats_as_no_change(&store(), Uuid::now_v7()).await;
+}
+
+#[tokio::test]
+async fn a_scope_erasure_removes_its_tombstoned_members() {
+    conformance::a_scope_erasure_removes_its_tombstoned_members(&store(), Uuid::now_v7()).await;
+}
+
+#[tokio::test]
 async fn only_the_active_epoch_ranks() {
     conformance::only_the_active_epoch_ranks(&store(), Uuid::now_v7()).await;
 }

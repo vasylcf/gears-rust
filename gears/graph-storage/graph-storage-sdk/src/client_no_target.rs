@@ -24,11 +24,14 @@ struct TargetTenantError;
 /// implementation that cannot honour a target tenant.
 pub struct NoTargetTenant;
 
+/// An `unimplemented` answer of the graph node resource, for a provided
+/// method an implementation of the client trait does not override.
+pub fn unimplemented(detail: &str) -> CanonicalError {
+    TargetTenantError::unimplemented(detail.to_owned()).create()
+}
+
 fn refused() -> CanonicalError {
-    TargetTenantError::unimplemented(
-        "this GraphStorageClientV1 implementation does not support a target tenant",
-    )
-    .create()
+    unimplemented("this GraphStorageClientV1 implementation does not support a target tenant")
 }
 
 #[async_trait]

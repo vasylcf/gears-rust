@@ -427,10 +427,33 @@ pub async fn delete_node(
     Extension(ctx): Extension<SecurityContext>,
     Extension(services): Extension<Arc<GraphServices>>,
     Query(target): Query<dto::TargetTenantParam>,
+    Query(params): Query<DeleteNodeParams>,
     Path(node_key): Path<String>,
-) -> ApiResult<Json<dto::GraphDeleteResultDto>> {
-    let outcome = services.delete_node(target.call(&ctx), &node_key).await?;
-    Ok(Json(outcome.into()))
+) -> ApiResult<axum::response::Response> {
+    use axum::response::IntoResponse as _;
+    match params.mode.as_deref() {
+        None | Some("soft") => {
+            let outcome = services.delete_node(target.call(&ctx), &node_key).await?;
+            Ok(Json(dto::GraphDeleteResultDto::from(outcome)).into_response())
+        }
+        // `204` whether or not a node was stored under the key: a purge is
+        // idempotent, so a caller retrying after an unknown outcome gets the
+        // answer it got the first time (gears-rust #5194).
+        Some("purge") => {
+            services.purge_node(target.call(&ctx), &node_key).await?;
+            Ok(axum::http::StatusCode::NO_CONTENT.into_response())
+        }
+        Some(other) => {
+            Err(DomainError::invalid(format!("mode `{other}`; expected soft or purge")).into())
+        }
+    }
+}
+
+/// `?mode=` on `DELETE /nodes/{node_key}`: `soft` (the default) tombstones,
+/// `purge` removes for good.
+#[derive(Debug, Deserialize)]
+pub struct DeleteNodeParams {
+    pub mode: Option<String>,
 }
 
 #[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id()))]

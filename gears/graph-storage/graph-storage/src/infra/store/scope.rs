@@ -152,9 +152,12 @@ pub(crate) async fn remove_stale(
             .secure()
             .scope_with(scope)
             .filter(
+                // Tombstoned members included: a tombstone keeps its payload,
+                // search text and vector, and a replacement -- an empty one
+                // above all -- is the scope's erasure (gears-rust #5194). A
+                // tombstoned key cannot be in `written`: ingest refuses it.
                 Condition::all()
                     .add(node::Column::GtsNodeTypeId.is_in(types.managed_nodes))
-                    .add(node::Column::DeletedAt.is_null())
                     .add(member()),
             )
             .project_all(tx, |query| {
@@ -300,7 +303,6 @@ pub(crate) async fn remove_stale(
             .filter(
                 Condition::all()
                     .add(node::Column::Id.is_in(removable))
-                    .add(node::Column::DeletedAt.is_null())
                     .add(member()),
             )
             .secure()

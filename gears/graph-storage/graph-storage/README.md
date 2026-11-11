@@ -154,9 +154,14 @@ Each is the shipped behaviour, with the contract that fixes it.
   analysis edge still references; the idempotency receipts of earlier
   requests stay. A replacement, like every write, touches
   the caller's own tenant only, whatever subtree its reads may see.
-- **A tombstoned node key is not reusable before purge**, and purge is not
-  built; a tombstoned edge is revived by the next upsert that names it
-  (DESIGN § Soft Delete Contract, rules 4 and 6).
+- **A tombstoned node key is not reusable before purge**; a tombstoned edge
+  is revived by the next upsert that names it (DESIGN § Soft Delete Contract,
+  rules 4 and 6). **Purge** (`DELETE /nodes/{key}?mode=purge`,
+  `purge_node`, the `purge` permission) removes a node, live or tombstoned,
+  and every edge incident to it, analysis edges included, and frees the key;
+  purging an absent key is `204` / `purged_nodes: 0`. A scope replacement
+  removes tombstoned members as well as live ones. The gear removes rows;
+  dead tuples, WAL and backups follow the deployment's retention.
 - **Adjacency on a node read is bounded per direction** by
   `node_read_max_adjacency` (100 by default, at most 1 000): outgoing and
   incoming are cut separately, so one read carries up to twice that many
