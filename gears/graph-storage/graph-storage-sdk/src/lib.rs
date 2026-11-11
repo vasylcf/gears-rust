@@ -17,7 +17,6 @@
 #![forbid(unsafe_code)]
 
 pub mod client;
-mod client_no_target;
 /// Executable plugin contracts for implementors; see [`contract`].
 #[cfg(feature = "test-support")]
 pub mod contract;
