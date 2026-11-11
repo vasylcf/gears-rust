@@ -94,7 +94,7 @@ impl<'a> From<&'a SecurityContext> for Call<'a> {
 ///
 /// A read keeps the scope the PDP returned, subtree and all: a parent tenant
 /// seeing its children is the platform's visibility rule. Every other action
-/// is pinned to the caller's own tenant. The store looks rows up *by key
+/// is pinned to the caller's own tenant (or to the target, below). The store looks rows up *by key
 /// under the scope* on the write path -- the upsert's existing row, an edge's
 /// endpoints, a replacement's stale set, a delete's target -- and under a
 /// `Subtree` scope a parent's write of key K found the child's K and
