@@ -135,7 +135,7 @@ fn registration_options(
     })
 }
 
-#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id()))]
+#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id(), target_tenant = ?target.tenant))]
 pub async fn register_types(
     Extension(ctx): Extension<SecurityContext>,
     Extension(services): Extension<Arc<GraphServices>>,
@@ -152,7 +152,7 @@ pub async fn register_types(
 }
 
 /// The dry run: every verdict, no write.
-#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id()))]
+#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id(), target_tenant = ?target.tenant))]
 pub async fn type_compatibility(
     Extension(ctx): Extension<SecurityContext>,
     Extension(services): Extension<Arc<GraphServices>>,
@@ -194,7 +194,7 @@ pub async fn readiness(
     Ok(Json(services.readiness().await.into()))
 }
 
-#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id()))]
+#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id(), target_tenant = ?target.tenant))]
 pub async fn list_source_namespaces(
     Extension(ctx): Extension<SecurityContext>,
     Extension(services): Extension<Arc<GraphServices>>,
@@ -206,7 +206,7 @@ pub async fn list_source_namespaces(
     }))
 }
 
-#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id()))]
+#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id(), target_tenant = ?target.tenant))]
 pub async fn transfer_source_namespace(
     Extension(ctx): Extension<SecurityContext>,
     Extension(services): Extension<Arc<GraphServices>>,
@@ -244,7 +244,7 @@ pub struct ListTypesParams {
     pub rest: std::collections::BTreeMap<String, String>,
 }
 
-#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id()))]
+#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id(), target_tenant = ?params.tenant))]
 pub async fn list_types(
     Extension(ctx): Extension<SecurityContext>,
     Extension(services): Extension<Arc<GraphServices>>,
@@ -289,7 +289,7 @@ pub async fn list_types(
     }))
 }
 
-#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id()))]
+#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id(), target_tenant = ?target.tenant))]
 pub async fn get_type(
     Extension(ctx): Extension<SecurityContext>,
     Extension(services): Extension<Arc<GraphServices>>,
@@ -300,7 +300,7 @@ pub async fn get_type(
     Ok(Json(record.into()))
 }
 
-#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id()))]
+#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id(), target_tenant = ?target.tenant))]
 pub async fn ingest(
     Extension(ctx): Extension<SecurityContext>,
     Extension(services): Extension<Arc<GraphServices>>,
@@ -329,7 +329,7 @@ pub struct GetNodeParams {
     pub adjacency_limit: Option<u32>,
 }
 
-#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id()))]
+#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id(), target_tenant = ?target.tenant))]
 pub async fn get_node(
     Extension(ctx): Extension<SecurityContext>,
     Extension(services): Extension<Arc<GraphServices>>,
@@ -348,7 +348,7 @@ pub async fn get_node(
 /// The envelope on the answer is the point of the surface: `fr-audit-envelope`
 /// asks for it on every returned node *and* edge, and until this existed no
 /// read path returned an edge as anything but a topology reference.
-#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id()))]
+#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id(), target_tenant = ?target.tenant))]
 pub async fn get_edge(
     Extension(ctx): Extension<SecurityContext>,
     Extension(services): Extension<Arc<GraphServices>>,
@@ -365,7 +365,7 @@ pub async fn get_edge(
 /// five accepted system query options — `cursor` included, as the documented
 /// alias for `$skiptoken` — and refuses anything else, so an option a client
 /// believes is applied can never be quietly dropped.
-#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id()))]
+#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id(), target_tenant = ?target.tenant))]
 pub async fn project_nodes(
     Extension(ctx): Extension<SecurityContext>,
     Extension(services): Extension<Arc<GraphServices>>,
@@ -384,7 +384,7 @@ pub async fn project_nodes(
 /// `$filter`. The same `OData` extractor binds the query, so a `$filter` means
 /// here what it means on the listing; the options a count has no use for are
 /// refused by the service.
-#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id()))]
+#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id(), target_tenant = ?target.tenant))]
 pub async fn count_nodes(
     Extension(ctx): Extension<SecurityContext>,
     Extension(services): Extension<Arc<GraphServices>>,
@@ -422,7 +422,7 @@ impl ProjectionTypeParams {
     }
 }
 
-#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id()))]
+#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id(), target_tenant = ?target.tenant))]
 pub async fn delete_node(
     Extension(ctx): Extension<SecurityContext>,
     Extension(services): Extension<Arc<GraphServices>>,
@@ -433,7 +433,7 @@ pub async fn delete_node(
     Ok(Json(outcome.into()))
 }
 
-#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id()))]
+#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id(), target_tenant = ?target.tenant))]
 pub async fn delete_edge(
     Extension(ctx): Extension<SecurityContext>,
     Extension(services): Extension<Arc<GraphServices>>,
@@ -444,7 +444,7 @@ pub async fn delete_edge(
     Ok(Json(outcome.into()))
 }
 
-#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id()))]
+#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id(), target_tenant = ?target.tenant))]
 pub async fn search(
     Extension(ctx): Extension<SecurityContext>,
     Extension(services): Extension<Arc<GraphServices>>,
@@ -482,7 +482,7 @@ fn parse_direction(raw: Option<&str>) -> Result<Option<m::Direction>, DomainErro
     .transpose()
 }
 
-#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id()))]
+#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id(), target_tenant = ?target.tenant))]
 pub async fn traverse(
     Extension(ctx): Extension<SecurityContext>,
     Extension(services): Extension<Arc<GraphServices>>,
@@ -506,7 +506,7 @@ pub async fn traverse(
     Ok(Json(response.into()))
 }
 
-#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id()))]
+#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id(), target_tenant = ?target.tenant))]
 pub async fn neighborhood(
     Extension(ctx): Extension<SecurityContext>,
     Extension(services): Extension<Arc<GraphServices>>,
@@ -528,7 +528,7 @@ pub async fn neighborhood(
     Ok(Json(response.into()))
 }
 
-#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id()))]
+#[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id(), target_tenant = ?target.tenant))]
 pub async fn revision(
     Extension(ctx): Extension<SecurityContext>,
     Extension(services): Extension<Arc<GraphServices>>,
