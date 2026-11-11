@@ -1342,14 +1342,35 @@ fn new_node_row(
     }
 }
 
+/// The conflict clause of a bulk insert: `ON CONFLICT (tenant_id, key) DO
+/// UPDATE SET key = EXCLUDED.key WHERE false`.
+///
+/// It inserts what `DO NOTHING` inserts and returns what it returns -- a row
+/// whose update `WHERE false` rejects is not in `RETURNING` -- but PostgreSQL
+/// locks a conflicting row even when the update's condition is false. So a key
+/// another batch took since the up-front read is locked here, inside the
+/// statement and in its key order, rather than later by the item path, after
+/// the rows behind it in the run are already locked; the batch then takes
+/// every lock in key order, as #5042 requires (gears-rust #5040).
+fn locking_conflict<C>(tenant: C, key: C) -> OnConflict
+where
+    C: sea_orm::sea_query::IntoIden + Copy + 'static,
+{
+    OnConflict::columns([tenant, key])
+        .update_column(key)
+        .action_and_where(Expr::val(false))
+        .to_owned()
+}
+
 /// Insert `rows` -- new keys, in key order -- in one statement per
 /// [`PREFETCH_CHUNK`] rows, and return the keys and ids of the rows that
 /// landed.
 ///
-/// `ON CONFLICT DO NOTHING RETURNING` returns only the rows it inserted, so a
-/// key another batch inserted since the up-front read is simply absent from
-/// the answer; the caller writes it on the item path, which settles a lost
-/// race exactly as before (gears-rust #5040).
+/// `RETURNING` returns only the rows the statement inserted, so a key another
+/// batch inserted since the up-front read is absent from the answer -- and,
+/// with `conflict` from [`locking_conflict`], already locked by this
+/// transaction in key order. The caller writes it on the item path, which
+/// settles a lost race as before (gears-rust #5040).
 async fn insert_new_rows<E>(
     scope: &AccessScope,
     tx: &impl DBRunner,
@@ -2652,9 +2673,7 @@ impl NodeBatch<'_> {
             self.w.scope,
             tx,
             rows,
-            OnConflict::columns([node::Column::TenantId, node::Column::NodeKey])
-                .do_nothing()
-                .to_owned(),
+            locking_conflict(node::Column::TenantId, node::Column::NodeKey),
             |row| (row.node_key.clone(), row.id),
         )
         .await?;
@@ -2985,9 +3004,7 @@ async fn flush_new_edges(
         w.scope,
         tx,
         rows,
-        OnConflict::columns([edge::Column::TenantId, edge::Column::EdgeKey])
-            .do_nothing()
-            .to_owned(),
+        locking_conflict(edge::Column::TenantId, edge::Column::EdgeKey),
         |row| (row.edge_key.clone(), row.id),
     )
     .await?;
