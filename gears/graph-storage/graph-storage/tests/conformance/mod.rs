@@ -32,8 +32,8 @@ use std::collections::BTreeMap;
 
 use graph_storage_sdk::models::{
     DeleteRequest, Direction, EdgeSpec, HopBudget, IngestOptions, IngestRequest, ItemFamily,
-    NodeId, NodeSpec, ProjectionRequest, ReadSnapshot, RemainingBudget, ReplaceScope, SearchMode,
-    SearchRequest, Subject, TypeRegistration,
+    NodeId, NodeSpec, ProjectionRequest, PurgeOptions, ReadSnapshot, RemainingBudget, ReplaceScope,
+    SearchMode, SearchRequest, Subject, TypeRegistration,
 };
 use graph_storage_sdk::plugin_api::{
     EmbeddingPlan, ExpandRequest, GraphEngineV1, GraphStoreError, GraphStoreV1, StoreCtx,
@@ -7686,7 +7686,7 @@ pub async fn a_purge_removes_a_node_and_every_edge_and_frees_its_key(
     let before = store.revision(&ctx).await.expect("revision reads");
 
     let outcome = store
-        .purge_node(&ctx, "erased".to_owned())
+        .purge_node(&ctx, "erased".to_owned(), PurgeOptions::default())
         .await
         .expect("the purge commits");
     assert_eq!(
@@ -7757,7 +7757,7 @@ pub async fn a_purge_takes_a_tombstone_and_repeats_as_no_change(
         .expect("the soft delete commits");
 
     let outcome = store
-        .purge_node(&ctx, "gone".to_owned())
+        .purge_node(&ctx, "gone".to_owned(), PurgeOptions::default())
         .await
         .expect("the tombstone is purged");
     assert_eq!(
@@ -7769,7 +7769,7 @@ pub async fn a_purge_takes_a_tombstone_and_repeats_as_no_change(
     let revision = store.revision(&ctx).await.expect("revision reads");
     for key in ["gone", "never-stored"] {
         let outcome = store
-            .purge_node(&ctx, key.to_owned())
+            .purge_node(&ctx, key.to_owned(), PurgeOptions::default())
             .await
             .expect("purging nothing is not an error");
         assert_eq!(
@@ -7843,4 +7843,144 @@ pub async fn a_scope_erasure_removes_its_tombstoned_members(
             .per_item_nodes,
         Some(vec![graph_storage_sdk::models::ItemOutcome::Inserted])
     );
+}
+
+/// A replacement whose only removal is a tombstoned edge of a departing
+/// node -- the node itself kept by a live analysis edge -- reports that
+/// edge and moves the revision: a row left the store (gears-rust #5906).
+pub async fn a_tombstoned_edge_a_replacement_removes_is_counted(
+    store: &dyn GraphStoreV1,
+    tenant: Uuid,
+) {
+    let scope = AccessScope::for_tenant(tenant);
+    let ctx = ctx(tenant, &scope, None);
+    seed_both_families(store, &ctx).await;
+    ingest_batch(
+        store,
+        &ctx,
+        batch_replacing(
+            vec![
+                scoped_node("held", "acme/infra"),
+                scoped_node("other", "acme/infra"),
+                scoped_node("third", "acme/infra"),
+            ],
+            vec![
+                analysis_edge("held", "other", "keeps"),
+                analysis_edge("held", "third", "retracted"),
+            ],
+            1,
+        ),
+    )
+    .await
+    .expect("the first snapshot lands");
+    let retracted = store
+        .get_node(&ctx, &"held".to_owned(), 10)
+        .await
+        .expect("the node reads")
+        .adjacency
+        .into_iter()
+        .find(|entry| entry.neighbor_key == "third")
+        .expect("the edge to `third` is adjacent")
+        .edge_key;
+    store
+        .soft_delete(&ctx, DeleteRequest::Edge(retracted))
+        .await
+        .expect("the analysis edge is tombstoned");
+    let before = store.revision(&ctx).await.expect("the revision reads");
+
+    // `held` departs; its live analysis edge keeps it, and its tombstoned
+    // one is removed with nothing else.
+    let outcome = ingest_batch(
+        store,
+        &ctx,
+        batch_replacing(
+            vec![
+                scoped_node("other", "acme/infra"),
+                scoped_node("third", "acme/infra"),
+            ],
+            Vec::new(),
+            2,
+        ),
+    )
+    .await
+    .expect("the second snapshot lands");
+    assert_eq!(
+        (
+            outcome.counts.scope_removed_nodes,
+            outcome.counts.scope_removed_edges
+        ),
+        (0, 1),
+        "the tombstoned edge is the one removal: {:?}",
+        outcome.counts
+    );
+    let after = store.revision(&ctx).await.expect("the revision reads");
+    assert!(
+        after.revision > before.revision,
+        "a removed row moves the revision: {before:?} -> {after:?}"
+    );
+    assert!(
+        store.get_node(&ctx, &"held".to_owned(), 10).await.is_ok(),
+        "the live analysis edge keeps its endpoint"
+    );
+}
+
+/// `only_tombstoned` refuses a live node and leaves it whole, and purges a
+/// tombstoned one: the retry-safe form of a purge where a key can be
+/// written again (gears-rust #5906).
+pub async fn a_purge_of_tombstones_only_refuses_a_live_node(
+    store: &dyn GraphStoreV1,
+    tenant: Uuid,
+) {
+    let scope = AccessScope::for_tenant(tenant);
+    let ctx = ctx(tenant, &scope, None);
+    store
+        .register_types(&ctx, ontology_batch())
+        .await
+        .expect("the ontology registers");
+    ingest_batch(
+        store,
+        &ctx,
+        batch(
+            vec![node("reused", "live"), node("reused-peer", "peer")],
+            vec![edge("reused", "reused-peer")],
+        ),
+    )
+    .await
+    .expect("the batch commits");
+    let only = PurgeOptions {
+        only_tombstoned: true,
+    };
+
+    let refused = store.purge_node(&ctx, "reused".to_owned(), only).await;
+    assert!(
+        matches!(refused, Err(GraphStoreError::Conflict { .. })),
+        "a live node is not purged under only_tombstoned: {refused:?}"
+    );
+    let kept = store
+        .get_node(&ctx, &"reused".to_owned(), 10)
+        .await
+        .expect("the live node stays");
+    assert_eq!(kept.adjacency.len(), 1, "and keeps its edge");
+
+    store
+        .soft_delete(&ctx, DeleteRequest::Node("reused".to_owned()))
+        .await
+        .expect("the node is tombstoned");
+    let outcome = store
+        .purge_node(&ctx, "reused".to_owned(), only)
+        .await
+        .expect("a tombstone is purged");
+    assert_eq!((outcome.purged_nodes, outcome.purged_edges), (1, 1));
+
+    // The key is free again; a new node under it is refused, not erased, by
+    // a late retry of the same purge.
+    ingest_batch(store, &ctx, batch(vec![node("reused", "new")], Vec::new()))
+        .await
+        .expect("the key is written again");
+    let retried = store.purge_node(&ctx, "reused".to_owned(), only).await;
+    assert!(
+        matches!(retried, Err(GraphStoreError::Conflict { .. })),
+        "a retry meets the new node and leaves it: {retried:?}"
+    );
+    assert!(store.get_node(&ctx, &"reused".to_owned(), 10).await.is_ok());
 }

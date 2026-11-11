@@ -967,7 +967,11 @@ mod purge {
         seed(client.as_ref(), &ctx, &["kept"]).await;
 
         let refused = client
-            .purge_node(&ctx, &"kept".to_owned())
+            .purge_node(
+                &ctx,
+                &"kept".to_owned(),
+                graph_storage_sdk::models::PurgeOptions::default(),
+            )
             .await
             .expect_err("purge is not delete");
         assert_eq!(refused.status_code(), 404, "{refused:?}");
@@ -990,7 +994,11 @@ mod purge {
 
         let outcome = client
             .in_tenant(target)
-            .purge_node(&service, &"fact".to_owned())
+            .purge_node(
+                &service,
+                &"fact".to_owned(),
+                graph_storage_sdk::models::PurgeOptions::default(),
+            )
             .await
             .expect("the target's node is purged");
         assert_eq!(outcome.purged_nodes, 1);

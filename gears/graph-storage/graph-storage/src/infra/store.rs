@@ -385,8 +385,9 @@ impl GraphStoreV1 for PgGraphStore {
         &self,
         ctx: &StoreCtx<'_>,
         key: graph_storage_sdk::models::NodeKey,
+        options: graph_storage_sdk::models::PurgeOptions,
     ) -> Result<graph_storage_sdk::models::PurgeOutcome, GraphStoreError> {
-        purge::purge_node(self, ctx, key).await
+        purge::purge_node(self, ctx, key, options).await
     }
 
     async fn begin_read(&self, ctx: &StoreCtx<'_>) -> Result<ReadSnapshot, GraphStoreError> {

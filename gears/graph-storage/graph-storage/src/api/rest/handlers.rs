@@ -440,7 +440,12 @@ pub async fn delete_node(
         // idempotent, so a caller retrying after an unknown outcome gets the
         // answer it got the first time (gears-rust #5194).
         Some("purge") => {
-            services.purge_node(target.call(&ctx), &node_key).await?;
+            let options = graph_storage_sdk::models::PurgeOptions {
+                only_tombstoned: params.only_tombstoned,
+            };
+            services
+                .purge_node(target.call(&ctx), &node_key, options)
+                .await?;
             Ok(axum::http::StatusCode::NO_CONTENT.into_response())
         }
         Some(other) => {
@@ -454,6 +459,11 @@ pub async fn delete_node(
 #[derive(Debug, Deserialize)]
 pub struct DeleteNodeParams {
     pub mode: Option<String>,
+    /// With `mode=purge`: purge only a node already soft-deleted, and answer
+    /// `409` for a live one -- the retry-safe form where a key can be written
+    /// again (`PurgeOptions::only_tombstoned`).
+    #[serde(default)]
+    pub only_tombstoned: bool,
 }
 
 #[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id(), target_tenant = ?target.tenant))]

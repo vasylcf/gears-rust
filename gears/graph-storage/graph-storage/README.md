@@ -160,7 +160,10 @@ Each is the shipped behaviour, with the contract that fixes it.
   rules 4 and 6). **Purge** (`DELETE /nodes/{key}?mode=purge`,
   `purge_node`, the `purge` permission) removes a node, live or tombstoned,
   and every edge incident to it, analysis edges included, and frees the key;
-  purging an absent key is `204` / `purged_nodes: 0`. A scope replacement
+  purging an absent key is `204` / `purged_nodes: 0`. That makes a retry
+  safe only while the key is not written again in between; where keys are
+  reused, soft-delete first and purge with `?only_tombstoned=true`, which
+  answers `409` for a live node. A scope replacement
   removes tombstoned members as well as live ones. The gear removes rows;
   dead tuples, WAL and backups follow the deployment's retention.
 - **Adjacency on a node read is bounded per direction** by

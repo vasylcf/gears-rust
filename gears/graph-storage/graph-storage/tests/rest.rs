@@ -758,3 +758,43 @@ async fn a_node_keyed_count_is_read_and_deleted_by_its_path() {
     let (status, gone) = stand.get("/nodes/count").await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{gone}");
 }
+
+/// Purge over REST: `only_tombstoned` answers `409` for a live node and
+/// purges it once soft-deleted; a purge answers `204` with no body.
+#[tokio::test]
+async fn a_purge_of_tombstones_only_is_refused_for_a_live_node_over_rest() {
+    let stand = Stand::new(Harness::allowed());
+    seed(&stand).await;
+    let (status, body) = stand
+        .post(
+            "/ingest",
+            &serde_json::json!({
+                "nodes": [{"node_key": "rest-purged", "type_id": conformance::OWNED}]
+            }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    let (status, problem) = stand
+        .delete("/nodes/rest-purged?mode=purge&only_tombstoned=true")
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "a live node: {problem}");
+    let (status, _) = stand.get("/nodes/rest-purged").await;
+    assert_eq!(status, StatusCode::OK, "and it is still there");
+
+    let (status, body) = stand.delete("/nodes/rest-purged").await;
+    assert_eq!(status, StatusCode::OK, "soft delete: {body}");
+    let (status, body) = stand
+        .delete("/nodes/rest-purged?mode=purge&only_tombstoned=true")
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    let (status, body) = stand
+        .post(
+            "/ingest",
+            &serde_json::json!({
+                "nodes": [{"node_key": "rest-purged", "type_id": conformance::OWNED}]
+            }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "the key is free again: {body}");
+}

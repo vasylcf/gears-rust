@@ -488,6 +488,16 @@ pg_case!(
 );
 
 pg_case!(
+    a_tombstoned_edge_a_replacement_removes_is_counted,
+    conformance::a_tombstoned_edge_a_replacement_removes_is_counted
+);
+
+pg_case!(
+    a_purge_of_tombstones_only_refuses_a_live_node,
+    conformance::a_purge_of_tombstones_only_refuses_a_live_node
+);
+
+pg_case!(
     tombstoned_rows_are_invisible,
     conformance::tombstones_are_invisible
 );
@@ -2696,13 +2706,68 @@ async fn a_purge_under_a_node_id_scope_removes_the_nodes_edges() {
     let narrow = conformance::ctx(tenant, &by_id, None);
     let outcome = stand
         .store
-        .purge_node(&narrow, "by-id".to_owned())
+        .purge_node(
+            &narrow,
+            "by-id".to_owned(),
+            graph_storage_sdk::models::PurgeOptions::default(),
+        )
         .await
         .expect("the purge commits");
     assert_eq!((outcome.purged_nodes, outcome.purged_edges), (1, 1));
     let peer = stand
         .store
         .get_node(&ctx, &"by-id-peer".to_owned(), 10)
+        .await
+        .expect("the peer stays");
+    assert!(peer.adjacency.is_empty(), "the edge went with the node");
+}
+
+/// A purge under a scope with no tenant constraint -- a direct store call;
+/// the service always pins a write to one tenant -- removes the node's edges
+/// in the node's own tenant rather than in an empty scope, so the foreign key
+/// does not refuse the node (gears-rust #5906, CodeRabbit).
+#[tokio::test]
+async fn a_purge_under_an_unconstrained_scope_removes_the_nodes_edges() {
+    let Some(stand) = stand().await else {
+        return;
+    };
+    let tenant = tenant_on(&stand).await;
+    let scope = AccessScope::for_tenant(tenant);
+    let ctx = conformance::ctx(tenant, &scope, None);
+    stand
+        .store
+        .register_types(&ctx, conformance::ontology_batch())
+        .await
+        .expect("the ontology registers");
+    conformance::ingest_batch(
+        stand.store.as_ref(),
+        &ctx,
+        conformance::batch(
+            vec![
+                conformance::node("open-a", "a"),
+                conformance::node("open-b", "b"),
+            ],
+            vec![conformance::edge("open-a", "open-b")],
+        ),
+    )
+    .await
+    .expect("the batch commits");
+
+    let everything = AccessScope::allow_all();
+    let open = conformance::ctx(tenant, &everything, None);
+    let outcome = stand
+        .store
+        .purge_node(
+            &open,
+            "open-a".to_owned(),
+            graph_storage_sdk::models::PurgeOptions::default(),
+        )
+        .await
+        .expect("the purge commits");
+    assert_eq!((outcome.purged_nodes, outcome.purged_edges), (1, 1));
+    let peer = stand
+        .store
+        .get_node(&ctx, &"open-b".to_owned(), 10)
         .await
         .expect("the peer stays");
     assert!(peer.adjacency.is_empty(), "the edge went with the node");

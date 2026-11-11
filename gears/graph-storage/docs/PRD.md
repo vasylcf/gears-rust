@@ -377,7 +377,7 @@ When an ingested edge references a node key that does not exist, the system **MU
 
 - [x] `p1` - **ID**: `cpt-cf-graph-storage-fr-edge-provenance`
 
-The system **MUST** distinguish static edges (derived deterministically from source data) from analysis edges (produced by an analysis process). Analysis edges and analysis-originated nodes **MUST** carry provenance metadata: origin, creating actor, method, and optionally model and confidence. Scope replacement (see `cpt-cf-graph-storage-fr-scope-replace`) **MUST NOT** delete analysis-originated content.
+The system **MUST** distinguish static edges (derived deterministically from source data) from analysis edges (produced by an analysis process). Analysis edges and analysis-originated nodes **MUST** carry provenance metadata: origin, creating actor, method, and optionally model and confidence. Scope replacement (see `cpt-cf-graph-storage-fr-scope-replace`) **MUST NOT** delete live analysis-originated content; an analysis edge already soft-deleted, incident to a node the replacement removes, is removed with that node.
 
 - **Rationale**: Re-importing source data must not destroy conclusions computed on top of it; provenance is also required to audit machine-generated edges.
 - **Actors**: `cpt-cf-graph-storage-actor-producer-gear`, `cpt-cf-graph-storage-actor-data-analyst`
@@ -386,7 +386,7 @@ The system **MUST** distinguish static edges (derived deterministically from sou
 
 - [x] `p1` - **ID**: `cpt-cf-graph-storage-fr-scope-replace`
 
-The system **MUST** support declarative scope replacement on ingest: the producer names a scope (an indexed payload attribute and value, e.g., a source repository), and the system deletes previously ingested static nodes and edges of that scope that are absent from the new batch, in the same transaction as the upserts. Analysis-originated content in the scope **MUST** survive replacement.
+The system **MUST** support declarative scope replacement on ingest: the producer names a scope (an indexed payload attribute and value, e.g., a source repository), and the system deletes previously ingested static nodes and edges of that scope that are absent from the new batch, in the same transaction as the upserts. Live analysis-originated content in the scope **MUST** survive replacement; a soft-deleted analysis edge incident to a removed node does not.
 
 A scope **MUST** have a canonical identity (tenant, owning producer, scope attribute and value). Replacements of one scope **MUST** serialize on that identity through a lock held to commit, and ordinary ingests writing static content into an owned scope **MUST** participate in the same locking protocol. Every replacement snapshot **MUST** carry a monotonic source generation: the system persists the highest accepted generation per scope and compares-and-updates it atomically under the scope lock; an older generation **MUST** be rejected as stale, an equal-generation identical retry **MUST** return the recorded outcome, and an equal-generation different-content snapshot **MUST** be rejected as a conflict (see DESIGN § Concurrent Ingest Protocol).
 

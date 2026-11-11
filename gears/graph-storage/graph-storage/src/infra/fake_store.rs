@@ -939,6 +939,7 @@ impl GraphStoreV1 for FakeGraphStore {
         &self,
         ctx: &StoreCtx<'_>,
         key: NodeKey,
+        options: graph_storage_sdk::models::PurgeOptions,
     ) -> Result<graph_storage_sdk::models::PurgeOutcome, GraphStoreError> {
         let mut tenants = self.tenants.lock().map_err(|_| poisoned())?;
         let tenant = tenants.entry(ctx.tenant).or_default();
@@ -950,6 +951,9 @@ impl GraphStoreV1 for FakeGraphStore {
                 purged_edges: 0,
             });
         };
+        if options.only_tombstoned && !tenant.nodes[position].deleted {
+            return Err(live_under_only_tombstoned(&key));
+        }
         let id = tenant.nodes[position].id;
         let before = tenant.edges.len();
         tenant.edges.retain(|edge| edge.src != id && edge.dst != id);
@@ -2722,10 +2726,12 @@ fn replace_scope(
     // A tombstoned edge is a deleted conclusion and must not keep a departing
     // node alive on its behalf; left in place it would make the scope stop
     // converging, permanently. Purged with the node, as the built-in store
-    // purges it.
+    // purges it, and counted with the other removed edges: a row left.
+    let before = edges.len();
     edges.retain(|edge| {
         !(edge.deleted && (dropped.contains(&edge.src) || dropped.contains(&edge.dst)))
     });
+    tally.counts.scope_removed_edges += (before - edges.len()) as u64;
 
     let referenced: BTreeSet<i64> = edges.iter().flat_map(|edge| [edge.src, edge.dst]).collect();
     let before = nodes.len();
@@ -2981,5 +2987,15 @@ mod eval {
             }
         }
         Ordering::Equal
+    }
+}
+
+/// The refusal both stores give a live node under `only_tombstoned`.
+fn live_under_only_tombstoned(key: &str) -> GraphStoreError {
+    GraphStoreError::Conflict {
+        reason: format!(
+            "node `{key}` is live and the purge asked for a tombstoned one only; soft-delete \
+             it first, or purge without only_tombstoned"
+        ),
     }
 }

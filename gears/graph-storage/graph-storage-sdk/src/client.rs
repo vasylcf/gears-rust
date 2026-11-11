@@ -11,9 +11,9 @@ use toolkit_security::SecurityContext;
 
 use crate::models::{
     DeleteOutcome, EdgeKey, GraphRevision, GtsTypeId, IngestOutcome, IngestRequest,
-    NeighborhoodRequest, NodeCount, NodeKey, NodeRow, NodeView, Page, PurgeOutcome, RegisteredType,
-    SearchRequest, SearchResponse, TraversalResponse, TraverseRequest, TypeQuery, TypeRecord,
-    TypeRegistration, TypeRegistrationOptions,
+    NeighborhoodRequest, NodeCount, NodeKey, NodeRow, NodeView, Page, PurgeOptions, PurgeOutcome,
+    RegisteredType, SearchRequest, SearchResponse, TraversalResponse, TraverseRequest, TypeQuery,
+    TypeRecord, TypeRegistration, TypeRegistrationOptions,
 };
 
 /// Object-safe client for in-process consumption by other gears (version 1).
@@ -157,7 +157,11 @@ pub trait GraphStorageClientV1: Send + Sync {
     /// It takes a live node or one already soft-deleted, so the tombstones a
     /// `delete_node` left can be erased afterwards. A key with no stored node
     /// is a success with `purged_nodes: 0`, so a retry after an unknown
-    /// outcome does not fail. Analysis edges go with the node: an erasure
+    /// outcome does not fail. That retry is safe only while the key cannot
+    /// be written again in between: a purge frees the key, and a retry finds
+    /// whatever node holds it by then. Where keys are reused, soft-delete
+    /// first and purge with `options.only_tombstoned`, which refuses a live
+    /// node with a conflict. Analysis edges go with the node: an erasure
     /// outranks a conclusion. Authorized as its own action, `purge`, not as
     /// `delete`. Dead tuples, WAL and backups follow the deployment's
     /// retention, not this call.
@@ -168,8 +172,9 @@ pub trait GraphStorageClientV1: Send + Sync {
         &self,
         ctx: &SecurityContext,
         node_key: &NodeKey,
+        options: PurgeOptions,
     ) -> Result<PurgeOutcome, CanonicalError> {
-        let _ = (ctx, node_key);
+        let _ = (ctx, node_key, options);
         Err(crate::client_no_target::unimplemented(
             "this GraphStorageClientV1 implementation does not support purge",
         ))

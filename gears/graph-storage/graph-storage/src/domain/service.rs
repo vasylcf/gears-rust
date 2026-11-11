@@ -834,6 +834,7 @@ impl GraphServices {
         &self,
         call: impl Into<Call<'_>>,
         node_key: &NodeKey,
+        options: graph_storage_sdk::models::PurgeOptions,
     ) -> Result<graph_storage_sdk::models::PurgeOutcome, DomainError> {
         let auth = self
             .authorize(call, &authz::node_resource(), authz::actions::PURGE)
@@ -841,7 +842,7 @@ impl GraphServices {
         admission::admit_identifier(&self.config, "node_key", node_key)?;
         Ok(self
             .store
-            .purge_node(&Self::store_ctx(&auth, None), node_key.clone())
+            .purge_node(&Self::store_ctx(&auth, None), node_key.clone(), options)
             .await?)
     }
 

@@ -196,9 +196,10 @@ impl GraphStorageClientV1 for GraphStorageLocalClient {
         &self,
         ctx: &SecurityContext,
         node_key: &NodeKey,
+        options: graph_storage_sdk::models::PurgeOptions,
     ) -> Result<graph_storage_sdk::models::PurgeOutcome, CanonicalError> {
         self.services
-            .purge_node(self.call(ctx), node_key)
+            .purge_node(self.call(ctx), node_key, options)
             .await
             .map_err(Into::into)
     }

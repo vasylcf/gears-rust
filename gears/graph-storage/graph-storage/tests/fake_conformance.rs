@@ -734,3 +734,13 @@ async fn overlapping_batches_all_land() {
 async fn a_count_agrees_with_the_listing() {
     conformance::a_count_agrees_with_the_listing(&store(), Uuid::now_v7()).await;
 }
+
+#[tokio::test]
+async fn a_tombstoned_edge_a_replacement_removes_is_counted() {
+    conformance::a_tombstoned_edge_a_replacement_removes_is_counted(&store(), Uuid::now_v7()).await;
+}
+
+#[tokio::test]
+async fn a_purge_of_tombstones_only_refuses_a_live_node() {
+    conformance::a_purge_of_tombstones_only_refuses_a_live_node(&store(), Uuid::now_v7()).await;
+}

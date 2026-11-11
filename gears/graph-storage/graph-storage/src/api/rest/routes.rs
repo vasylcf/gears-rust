@@ -402,7 +402,9 @@ fn read_routes(router: Router, openapi: &dyn OpenApiRegistry) -> Router {
              `mode=purge` removes the node, live or tombstoned, and every edge \
              incident to it for good, freeing the key; it needs the `purge` \
              permission and answers 204 whether or not a node was stored under \
-             the key",
+             the key. A retry after an unknown outcome finds whatever node holds \
+             the key by then; where keys are reused, soft-delete first and purge \
+             with `only_tombstoned=true`, which answers 409 for a live node",
         )
         .tag(API_TAG)
         .authenticated()
@@ -410,6 +412,12 @@ fn read_routes(router: Router, openapi: &dyn OpenApiRegistry) -> Router {
         .path_param("node_key", "Producer-supplied node key")
         .query_param_typed("tenant", false, TENANT_PARAM, "string")
         .query_param("mode", false, "`soft` (default) or `purge`")
+        .query_param_typed(
+            "only_tombstoned",
+            false,
+            "With `mode=purge`: purge only a node already soft-deleted; 409 for a live one",
+            "boolean",
+        )
         .handler(handlers::delete_node)
         .json_response_with_schema::<dto::GraphDeleteResultDto>(
             openapi,

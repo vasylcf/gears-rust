@@ -854,6 +854,20 @@ pub struct DeleteOutcome {
     pub tombstoned_edges: u64,
 }
 
+/// How a purge treats the node it finds (gears-rust #5906).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PurgeOptions {
+    /// Purge only a node that is already soft-deleted, and refuse a live one
+    /// with a conflict. The safe form of a retried purge when the key can be
+    /// written again: a purge frees the key, so a blind retry after an
+    /// unknown outcome would remove a new node another writer stored under
+    /// it meanwhile; a tombstoned key cannot be reused, so soft-delete first
+    /// and purge with this set, and a retry meets either nothing or a node it
+    /// must not touch. Not needed when keys are never reused, such as random
+    /// ones.
+    pub only_tombstoned: bool,
+}
+
 /// Outcome of a purge: what was removed for good (gears-rust #5194).
 ///
 /// `purged_nodes` is 0 when no node, live or tombstoned, was stored under
