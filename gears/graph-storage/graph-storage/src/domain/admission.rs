@@ -477,6 +477,56 @@ pub fn admit_traverse(
     Ok(())
 }
 
+/// The edge listing's request, held to the bounds traversal holds the same
+/// fields to: every identifier to `identifier_max_bytes`, the discriminator
+/// list to `EDGE_DISCRIMINATORS_MAX` with no empty value, and the page to
+/// `1..=edge_list_max_page`. Every field is named, so one added to the
+/// request is a compile error here until it is admitted.
+pub fn admit_node_edges(
+    cfg: &GraphStorageConfig,
+    request: &graph_storage_sdk::models::NodeEdgesRequest,
+) -> Result<(), DomainError> {
+    let graph_storage_sdk::models::NodeEdgesRequest {
+        node_key,
+        direction: _,
+        edge_type_patterns,
+        discriminators,
+        limit,
+        cursor,
+    } = request;
+    admit_identifier(cfg, "node_key", node_key)?;
+    for (index, pattern) in edge_type_patterns.iter().enumerate() {
+        admit_identifier(cfg, &format!("edge_type_patterns[{index}]"), pattern)?;
+    }
+    if discriminators.len() > EDGE_DISCRIMINATORS_MAX {
+        return Err(exceeded(format!(
+            "discriminators carries {} values; the bound is {EDGE_DISCRIMINATORS_MAX}",
+            discriminators.len()
+        )));
+    }
+    for (index, discriminator) in discriminators.iter().enumerate() {
+        admit_identifier(cfg, &format!("discriminators[{index}]"), discriminator)?;
+        if discriminator.is_empty() {
+            return Err(DomainError::invalid(format!(
+                "discriminators[{index}] is empty; an edge ingested with an empty \
+                 discriminator has none, and no list matches an edge without one"
+            )));
+        }
+    }
+    let max_page = cfg.edge_list_max_page;
+    if let Some(limit) = *limit
+        && (limit == 0 || limit > max_page)
+    {
+        return Err(exceeded(format!(
+            "limit {limit} is outside 1..={max_page} (edge_list_max_page)"
+        )));
+    }
+    if let Some(cursor) = cursor {
+        admit_identifier(cfg, "cursor", cursor)?;
+    }
+    Ok(())
+}
+
 pub fn admit_neighborhood(
     cfg: &GraphStorageConfig,
     request: &NeighborhoodRequest,

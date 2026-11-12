@@ -900,17 +900,8 @@ impl GraphServices {
         let auth = self
             .authorize(call, &authz::node_resource(), authz::actions::READ)
             .await?;
-        admission::admit_identifier(&self.config, "node_key", &request.node_key)?;
-        for discriminator in &request.discriminators {
-            admission::admit_identifier(&self.config, "discriminator", discriminator)?;
-        }
-        let max_page = self.config.edge_list_max_page;
-        let limit = request.limit.unwrap_or(max_page);
-        if limit == 0 || limit > max_page {
-            return Err(DomainError::LimitExceeded {
-                what: format!("limit {limit} is outside 1..={max_page} (edge_list_max_page)"),
-            });
-        }
+        admission::admit_node_edges(&self.config, &request)?;
+        let limit = request.limit.unwrap_or(self.config.edge_list_max_page);
         let direction = request.direction.unwrap_or(Direction::Either);
         let identity = admission::edge_listing_identity(
             &request.node_key,

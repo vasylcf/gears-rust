@@ -3356,3 +3356,49 @@ async fn the_edge_listing_page_is_bounded_by_configuration() {
         );
     }
 }
+
+/// The listing's filters are held to traversal's bounds: an over-long
+/// pattern, more discriminators than the bound, and an empty discriminator
+/// are refused before the store is asked.
+#[tokio::test]
+async fn the_edge_listing_admits_its_filters_as_traversal_does() {
+    let harness = Harness::allowed();
+    seed_weighted_star(&harness, 2, 0).await;
+    let ctx = harness.ctx();
+    let long = "p".repeat(GraphStorageConfig::default().identifier_max_bytes as usize + 1);
+    let cases = [
+        (
+            "an over-long pattern",
+            NodeEdgesRequest {
+                edge_type_patterns: vec![long],
+                ..hub_edges(None, None)
+            },
+        ),
+        (
+            "too many discriminators",
+            NodeEdgesRequest {
+                discriminators: (0..=graph_storage::domain::admission::EDGE_DISCRIMINATORS_MAX)
+                    .map(|i| format!("d{i}"))
+                    .collect(),
+                ..hub_edges(None, None)
+            },
+        ),
+        (
+            "an empty discriminator",
+            NodeEdgesRequest {
+                discriminators: vec![String::new()],
+                ..hub_edges(None, None)
+            },
+        ),
+    ];
+    for (what, request) in cases {
+        let refused = harness.services.list_node_edges(&ctx, request).await;
+        assert!(
+            matches!(
+                refused,
+                Err(DomainError::LimitExceeded { .. } | DomainError::InvalidArgument { .. })
+            ),
+            "{what} is refused: {refused:?}"
+        );
+    }
+}
