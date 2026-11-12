@@ -3235,3 +3235,109 @@ async fn a_namespace_is_claimed_after_the_earlier_keys_of_the_run() {
         "the waiting batch must not hold the namespace yet: {claimed:?}"
     );
 }
+
+/// A stored edge a batch replays, which another transaction tombstones while
+/// the batch waits on an earlier edge key, is revived from the row as it is
+/// at the edge's turn -- not reported `Unchanged` from the batch's up-front
+/// read, which still saw it live (gears-rust #5864, a review finding).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_edge_tombstoned_meanwhile_is_revived_not_reported_unchanged() {
+    use sea_orm::{ConnectionTrait as _, TransactionTrait as _};
+    let Some(stand) = stand().await else {
+        return;
+    };
+    let tenant = tenant_on(&stand).await;
+    let scope = AccessScope::for_tenant(tenant);
+    let ctx = conformance::ctx(tenant, &scope, None);
+    stand
+        .store
+        .register_types(&ctx, conformance::ontology_batch())
+        .await
+        .expect("the ontology registers");
+    let edges = || {
+        vec![
+            conformance::edge("rev-a", "rev-b"),
+            conformance::edge("rev-a", "rev-c"),
+        ]
+    };
+    conformance::ingest_batch(
+        stand.store.as_ref(),
+        &ctx,
+        conformance::batch(
+            vec![
+                conformance::node("rev-a", "a"),
+                conformance::node("rev-b", "b"),
+                conformance::node("rev-c", "c"),
+            ],
+            edges(),
+        ),
+    )
+    .await
+    .expect("the edges commit");
+    let mut keys: Vec<String> = stand
+        .store
+        .get_node(&ctx, &"rev-a".to_owned(), 10)
+        .await
+        .expect("the node reads")
+        .adjacency
+        .into_iter()
+        .map(|entry| entry.edge_key)
+        .collect();
+    keys.sort();
+    let (earlier, later) = (keys[0].clone(), keys[1].clone());
+
+    let raw = sea_orm::Database::connect(&stand.dsn)
+        .await
+        .expect("a plain connection for the other transaction");
+    let holder = raw.begin().await.expect("the holder begins");
+    holder
+        .execute_unprepared(&format!(
+            "UPDATE edge SET payload = '{{\"held\": 1}}' \
+             WHERE tenant_id = '{tenant}' AND edge_key = '{earlier}'"
+        ))
+        .await
+        .expect("the holder takes the earlier edge key");
+
+    let writer = {
+        let store = Arc::clone(&stand.store);
+        tokio::spawn(async move {
+            let scope = AccessScope::for_tenant(tenant);
+            let ctx = conformance::ctx(tenant, &scope, None);
+            conformance::ingest_batch(
+                store.as_ref(),
+                &ctx,
+                conformance::batch(Vec::new(), edges()),
+            )
+            .await
+        })
+    };
+    until_a_session_waits_on_a_lock(&raw, "the batch never waited on the earlier edge key").await;
+    holder
+        .execute_unprepared(&format!(
+            "UPDATE edge SET deleted_at = now() \
+             WHERE tenant_id = '{tenant}' AND edge_key = '{later}'"
+        ))
+        .await
+        .expect("the holder tombstones the later edge");
+    holder.commit().await.expect("the holder commits");
+
+    writer
+        .await
+        .expect("the writer task does not panic")
+        .expect("the replay lands");
+    let row = raw
+        .query_one_raw(sea_orm::Statement::from_string(
+            sea_orm::DatabaseBackend::Postgres,
+            format!(
+                "SELECT (deleted_at IS NULL) AS live FROM edge \
+                 WHERE tenant_id = '{tenant}' AND edge_key = '{later}'"
+            ),
+        ))
+        .await
+        .expect("the edge reads")
+        .expect("the edge is there");
+    assert!(
+        row.try_get::<bool>("", "live").expect("a flag"),
+        "the replay revives the edge it names, as a replay after the delete does"
+    );
+}

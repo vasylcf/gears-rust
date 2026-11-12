@@ -864,6 +864,74 @@ async fn relock_run(
     Ok(())
 }
 
+/// The keys of the consecutive edges from the first of `checked` whose
+/// up-front row has not been read again yet, at most a chunk of them; empty
+/// when the first has none.
+fn stale_edge_run(
+    checked: &[(String, usize, Endpoint, Endpoint)],
+    stored: &BTreeMap<String, edge::Model>,
+    seen: &std::collections::BTreeSet<String>,
+    relocked: &std::collections::BTreeSet<String>,
+) -> Vec<String> {
+    let stale =
+        |key: &String| stored.contains_key(key) && !seen.contains(key) && !relocked.contains(key);
+    let mut keys: Vec<String> = Vec::new();
+    for (key, ..) in checked {
+        if !stale(key) || keys.len() == PREFETCH_CHUNK {
+            break;
+        }
+        if keys.last() != Some(key) {
+            keys.push(key.clone());
+        }
+    }
+    keys
+}
+
+/// Read a run of stored edges again under their lock and replace what the
+/// up-front read said about them.
+async fn relock_edge_run(
+    scope: &AccessScope,
+    tx: &impl DBRunner,
+    keys: &[String],
+    stored: &mut BTreeMap<String, edge::Model>,
+) -> Result<(), GraphStoreError> {
+    let mut fresh = relock_edge_rows(scope, tx, keys).await?;
+    for key in keys {
+        match fresh.remove(key) {
+            Some(row) => stored.insert(key.clone(), row),
+            // Gone since -- removed by a scope replacement or a purge -- the
+            // edge is new again.
+            None => stored.remove(key),
+        };
+    }
+    Ok(())
+}
+
+/// The stored edges of `keys`, tombstoned ones included, read under
+/// `FOR NO KEY UPDATE` in key order -- the lock their update takes anyway.
+async fn relock_edge_rows(
+    scope: &AccessScope,
+    tx: &impl DBRunner,
+    keys: &[String],
+) -> Result<BTreeMap<String, edge::Model>, GraphStoreError> {
+    let rows: Vec<edge::Model> = edge::Entity::find()
+        .secure()
+        .scope_with(scope)
+        .filter(Condition::all().add(edge::Column::EdgeKey.is_in(keys.to_vec())))
+        .project_all(tx, |query| {
+            query
+                .order_by_asc(edge::Column::EdgeKey)
+                .lock(sea_orm::sea_query::LockType::NoKeyUpdate)
+                .into_model::<edge::Model>()
+        })
+        .await
+        .map_err(map_scope_err)?;
+    Ok(rows
+        .into_iter()
+        .map(|row| (row.edge_key.clone(), row))
+        .collect())
+}
+
 /// The stored rows of `keys`, tombstoned ones included, read under
 /// `FOR NO KEY UPDATE` in key order -- the lock their update takes anyway.
 async fn relock_rows(
@@ -3142,12 +3210,28 @@ async fn write_edges(
     // on its own and at the end, so no lock is taken out of key order. A key
     // a concurrent batch took since the read is written on the item path
     // right after its run.
+    //
+    // A stored edge is read again at its turn, under the lock its update
+    // takes, as `write_nodes` reads a stored node again: the up-front read
+    // ran before the endpoint pass and every earlier write, and a delete or
+    // a rewrite that committed since would otherwise be answered as
+    // `Unchanged` from the old row. One statement per run of consecutive
+    // stored keys.
     let now = OffsetDateTime::now_utc();
     let mut run: Vec<(usize, String, Endpoint, Endpoint, edge::ActiveModel)> = Vec::new();
-    for (edge_key, index, src, dst) in checked {
+    let mut relocked = std::collections::BTreeSet::new();
+    for position in 0..checked.len() {
         if w.budget.is_exhausted() {
             return Err(GraphStoreError::Deadline);
         }
+        let keys = stale_edge_run(&checked[position..], &stored, &seen, &relocked);
+        if !keys.is_empty() {
+            // The pending run holds earlier keys; its locks come first.
+            flush_new_edges(w, tx, request, types, declaring, &mut run, &mut outcomes).await?;
+            relock_edge_run(w.scope, tx, &keys, &mut stored).await?;
+            relocked.extend(keys);
+        }
+        let (edge_key, index, src, dst) = checked[position].clone();
         let spec = &request.edges[index];
         let info = types.get(&spec.type_id).ok_or_else(|| {
             item_error(
