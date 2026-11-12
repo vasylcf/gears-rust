@@ -866,6 +866,14 @@ pub struct PurgeOptions {
     /// must not touch. Not needed when keys are never reused, such as random
     /// ones.
     pub only_tombstoned: bool,
+    /// Purge only the node created at this instant -- its envelope's
+    /// `created_at`, which is set at insert and never changes -- and refuse
+    /// any other with a conflict. This binds a purge to one node rather than
+    /// to whatever holds the key: a retry after an unknown outcome then meets
+    /// either nothing (it landed) or a different node it must not touch,
+    /// live or tombstoned, which `only_tombstoned` alone cannot tell apart.
+    /// Read it from any read of the node before deleting it.
+    pub expected_created_at: Option<time::OffsetDateTime>,
 }
 
 /// Outcome of a purge: what was removed for good (gears-rust #5194).

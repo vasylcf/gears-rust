@@ -498,6 +498,11 @@ pg_case!(
 );
 
 pg_case!(
+    a_purge_bound_to_a_creation_instant_leaves_a_later_node_alone,
+    conformance::a_purge_bound_to_a_creation_instant_leaves_a_later_node_alone
+);
+
+pg_case!(
     tombstoned_rows_are_invisible,
     conformance::tombstones_are_invisible
 );

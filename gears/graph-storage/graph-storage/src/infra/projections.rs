@@ -25,6 +25,7 @@ use crate::infra::storage::entity::{edge, gts_type, node};
 pub struct PurgeTarget {
     pub id: i64,
     pub tenant_id: uuid::Uuid,
+    pub created_at: time::OffsetDateTime,
     pub deleted_at: Option<time::OffsetDateTime>,
 }
 
@@ -33,6 +34,7 @@ pub fn purge_target_columns(query: Select<node::Entity>) -> Select<node::Entity>
         .select_only()
         .column(node::Column::Id)
         .column(node::Column::TenantId)
+        .column(node::Column::CreatedAt)
         .column(node::Column::DeletedAt)
 }
 

@@ -951,6 +951,15 @@ impl GraphStoreV1 for FakeGraphStore {
                 purged_edges: 0,
             });
         };
+        if let Some(expected) = options.expected_created_at
+            && tenant.nodes[position].audit.created_at != expected
+        {
+            return Err(crate::infra::store::purge::another_instance(
+                &key,
+                expected,
+                tenant.nodes[position].audit.created_at,
+            ));
+        }
         if options.only_tombstoned && !tenant.nodes[position].deleted {
             return Err(live_under_only_tombstoned(&key));
         }

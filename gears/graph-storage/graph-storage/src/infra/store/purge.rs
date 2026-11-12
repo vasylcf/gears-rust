@@ -64,6 +64,15 @@ pub async fn purge_node(
                     });
                 };
 
+                if let Some(expected) = options.expected_created_at
+                    && stored.created_at != expected
+                {
+                    return Err(TxStoreError(another_instance(
+                        &key,
+                        expected,
+                        stored.created_at,
+                    )));
+                }
                 if options.only_tombstoned && stored.deleted_at.is_none() {
                     return Err(TxStoreError(GraphStoreError::Conflict {
                         reason: format!(
@@ -120,4 +129,19 @@ pub async fn purge_node(
         })
         .await
         .map_err(|TxStoreError(error)| error)
+}
+
+/// The refusal of a purge bound by `expected_created_at` to a node that is
+/// not the one stored under the key now. Shared with the in-memory store.
+pub(crate) fn another_instance(
+    key: &str,
+    expected: time::OffsetDateTime,
+    stored: time::OffsetDateTime,
+) -> GraphStoreError {
+    GraphStoreError::Conflict {
+        reason: format!(
+            "the node under key `{key}` was created at {stored}, not at {expected}: it is \
+             another node than the one this purge names, and it is left alone"
+        ),
+    }
 }

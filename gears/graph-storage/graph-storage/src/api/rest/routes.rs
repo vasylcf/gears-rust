@@ -403,8 +403,9 @@ fn read_routes(router: Router, openapi: &dyn OpenApiRegistry) -> Router {
              incident to it for good, freeing the key; it needs the `purge` \
              permission and answers 204 whether or not a node was stored under \
              the key. A retry after an unknown outcome finds whatever node holds \
-             the key by then; where keys are reused, soft-delete first and purge \
-             with `only_tombstoned=true`, which answers 409 for a live node",
+             the key by then; where keys are reused, purge with \
+             `expected_created_at` (the node's envelope `created_at`), which \
+             answers 409 for any other node under the key",
         )
         .tag(API_TAG)
         .authenticated()
@@ -417,6 +418,11 @@ fn read_routes(router: Router, openapi: &dyn OpenApiRegistry) -> Router {
             false,
             "With `mode=purge`: purge only a node already soft-deleted; 409 for a live one",
             "boolean",
+        )
+        .query_param(
+            "expected_created_at",
+            false,
+            "With `mode=purge`: purge only the node whose envelope `created_at` is this RFC 3339 instant; 409 for another node under the key",
         )
         .handler(handlers::delete_node)
         .json_response_with_schema::<dto::GraphDeleteResultDto>(

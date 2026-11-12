@@ -162,8 +162,9 @@ Each is the shipped behaviour, with the contract that fixes it.
   and every edge incident to it, analysis edges included, and frees the key;
   purging an absent key is `204` / `purged_nodes: 0`. That makes a retry
   safe only while the key is not written again in between; where keys are
-  reused, soft-delete first and purge with `?only_tombstoned=true`, which
-  answers `409` for a live node. A scope replacement
+  reused, purge with `?expected_created_at=<envelope.created_at>`, which
+  answers `409` for any other node under the key, live or tombstoned
+  (`?only_tombstoned=true` refuses a live node only). A scope replacement
   removes tombstoned members as well as live ones. The gear removes rows;
   dead tuples, WAL and backups follow the deployment's retention.
 - **Adjacency on a node read is bounded per direction** by

@@ -2338,8 +2338,12 @@ whatever node holds it by then. Where keys are reused (a profile root keyed by
 subject, a mirror node keyed by its source identity), soft-delete first and
 purge with `only_tombstoned` (`PurgeOptions`, `?only_tombstoned=true`): a
 tombstoned key cannot be reused, and a live node under it is refused with
-`409`, so a late retry meets a conflict instead of erasing a new node. Random
-keys need neither. An edge another batch
+`409`, so a late retry meets a conflict instead of erasing a new node. That
+still lets a retry erase a later node that was itself soft-deleted in
+between; `expected_created_at` (`?expected_created_at=`) closes it, binding
+the purge to the node created at that instant -- the envelope's
+`created_at`, set at insert and never changed -- and refusing any other node
+under the key with `409`, live or tombstoned. Random keys need neither. An edge another batch
 attaches between the two statements makes the node delete fail on the foreign
 key, a conflict the caller retries. Purge is the way to erase the tombstones
 deletes left: rule 4's key comes back with it, and rule 5's index entries go

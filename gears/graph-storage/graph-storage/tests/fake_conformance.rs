@@ -744,3 +744,12 @@ async fn a_tombstoned_edge_a_replacement_removes_is_counted() {
 async fn a_purge_of_tombstones_only_refuses_a_live_node() {
     conformance::a_purge_of_tombstones_only_refuses_a_live_node(&store(), Uuid::now_v7()).await;
 }
+
+#[tokio::test]
+async fn a_purge_bound_to_a_creation_instant_leaves_a_later_node_alone() {
+    conformance::a_purge_bound_to_a_creation_instant_leaves_a_later_node_alone(
+        &store(),
+        Uuid::now_v7(),
+    )
+    .await;
+}

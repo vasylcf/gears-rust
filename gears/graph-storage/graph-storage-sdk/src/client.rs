@@ -159,9 +159,10 @@ pub trait GraphStorageClientV1: Send + Sync {
     /// is a success with `purged_nodes: 0`, so a retry after an unknown
     /// outcome does not fail. That retry is safe only while the key cannot
     /// be written again in between: a purge frees the key, and a retry finds
-    /// whatever node holds it by then. Where keys are reused, soft-delete
-    /// first and purge with `options.only_tombstoned`, which refuses a live
-    /// node with a conflict. Analysis edges go with the node: an erasure
+    /// whatever node holds it by then. Where keys are reused, purge with
+    /// `options.expected_created_at` -- the node's envelope `created_at` --
+    /// which refuses any other node under the key with a conflict;
+    /// `options.only_tombstoned` refuses a live one only. Analysis edges go with the node: an erasure
     /// outranks a conclusion. Authorized as its own action, `purge`, not as
     /// `delete`. Dead tuples, WAL and backups follow the deployment's
     /// retention, not this call.

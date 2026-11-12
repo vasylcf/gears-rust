@@ -7949,6 +7949,7 @@ pub async fn a_purge_of_tombstones_only_refuses_a_live_node(
     .expect("the batch commits");
     let only = PurgeOptions {
         only_tombstoned: true,
+        ..PurgeOptions::default()
     };
 
     let refused = store.purge_node(&ctx, "reused".to_owned(), only).await;
@@ -7983,4 +7984,79 @@ pub async fn a_purge_of_tombstones_only_refuses_a_live_node(
         "a retry meets the new node and leaves it: {retried:?}"
     );
     assert!(store.get_node(&ctx, &"reused".to_owned(), 10).await.is_ok());
+}
+
+/// `expected_created_at` binds a purge to one node: the node created at that
+/// instant is purged, and a later node under the same key -- live, or
+/// soft-deleted as in the retry a review described -- is refused and left
+/// whole (gears-rust #5906).
+pub async fn a_purge_bound_to_a_creation_instant_leaves_a_later_node_alone(
+    store: &dyn GraphStoreV1,
+    tenant: Uuid,
+) {
+    let scope = AccessScope::for_tenant(tenant);
+    let ctx = ctx(tenant, &scope, None);
+    store
+        .register_types(&ctx, ontology_batch())
+        .await
+        .expect("the ontology registers");
+    ingest_batch(store, &ctx, batch(vec![node("bound", "first")], Vec::new()))
+        .await
+        .expect("the first node commits");
+    let first = store
+        .get_node(&ctx, &"bound".to_owned(), 10)
+        .await
+        .expect("the first node reads")
+        .envelope
+        .created_at;
+    let bound = PurgeOptions {
+        expected_created_at: Some(first),
+        ..PurgeOptions::default()
+    };
+    let outcome = store
+        .purge_node(&ctx, "bound".to_owned(), bound)
+        .await
+        .expect("the named node is purged");
+    assert_eq!(outcome.purged_nodes, 1);
+
+    // Another writer takes the freed key, and the retry arrives late.
+    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    ingest_batch(
+        store,
+        &ctx,
+        batch(vec![node("bound", "second")], Vec::new()),
+    )
+    .await
+    .expect("the key is written again");
+    let live = store.purge_node(&ctx, "bound".to_owned(), bound).await;
+    assert!(
+        matches!(live, Err(GraphStoreError::Conflict { .. })),
+        "a later live node is refused: {live:?}"
+    );
+    store
+        .soft_delete(&ctx, DeleteRequest::Node("bound".to_owned()))
+        .await
+        .expect("the later node is tombstoned");
+    let tombstoned = store
+        .purge_node(
+            &ctx,
+            "bound".to_owned(),
+            PurgeOptions {
+                only_tombstoned: true,
+                ..bound
+            },
+        )
+        .await;
+    assert!(
+        matches!(tombstoned, Err(GraphStoreError::Conflict { .. })),
+        "a later tombstone is refused too: {tombstoned:?}"
+    );
+    let outcome = store
+        .purge_node(&ctx, "bound".to_owned(), PurgeOptions::default())
+        .await
+        .expect("an unbound purge still takes it");
+    assert_eq!(
+        outcome.purged_nodes, 1,
+        "the later node was there all along"
+    );
 }

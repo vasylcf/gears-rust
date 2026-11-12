@@ -440,8 +440,24 @@ pub async fn delete_node(
         // idempotent, so a caller retrying after an unknown outcome gets the
         // answer it got the first time (gears-rust #5194).
         Some("purge") => {
+            let expected_created_at = params
+                .expected_created_at
+                .as_deref()
+                .map(|text| {
+                    time::OffsetDateTime::parse(
+                        text,
+                        &time::format_description::well_known::Rfc3339,
+                    )
+                    .map_err(|error| {
+                        DomainError::invalid(format!(
+                            "expected_created_at `{text}` is not an RFC 3339 timestamp: {error}"
+                        ))
+                    })
+                })
+                .transpose()?;
             let options = graph_storage_sdk::models::PurgeOptions {
                 only_tombstoned: params.only_tombstoned,
+                expected_created_at,
             };
             services
                 .purge_node(target.call(&ctx), &node_key, options)
@@ -464,6 +480,10 @@ pub struct DeleteNodeParams {
     /// again (`PurgeOptions::only_tombstoned`).
     #[serde(default)]
     pub only_tombstoned: bool,
+    /// With `mode=purge`: purge only the node created at this RFC 3339
+    /// instant -- its envelope's `created_at` -- and answer `409` for any
+    /// other (`PurgeOptions::expected_created_at`).
+    pub expected_created_at: Option<String>,
 }
 
 #[tracing::instrument(skip_all, fields(user.id = %ctx.subject_id(), target_tenant = ?target.tenant))]

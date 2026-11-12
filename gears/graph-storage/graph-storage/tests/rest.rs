@@ -797,4 +797,24 @@ async fn a_purge_of_tombstones_only_is_refused_for_a_live_node_over_rest() {
         )
         .await;
     assert_eq!(status, StatusCode::OK, "the key is free again: {body}");
+
+    // Bound to a creation instant: another instant is refused, this one
+    // purges.
+    let (status, node) = stand.get("/nodes/rest-purged").await;
+    assert_eq!(status, StatusCode::OK, "{node}");
+    let created_at = node["envelope"]["created_at"]
+        .as_str()
+        .expect("the envelope names its creation")
+        .to_owned();
+    let (status, problem) = stand
+        .delete("/nodes/rest-purged?mode=purge&expected_created_at=2000-01-01T00:00:00Z")
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "another instant: {problem}");
+    let (status, body) = stand
+        .delete(&format!(
+            "/nodes/rest-purged?mode=purge&expected_created_at={}",
+            created_at.replace('+', "%2B")
+        ))
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "its own instant: {body}");
 }
