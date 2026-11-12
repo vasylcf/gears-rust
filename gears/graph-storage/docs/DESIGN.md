@@ -1167,10 +1167,14 @@ because each was answerable more than one way:
   `limit` incident edges past the cursor and returns those whose both
   endpoints the caller may see -- the edge read's rule -- so a page can be
   short or empty and still carry a cursor; only a null `next_cursor` ends the
-  listing. The cursor is `<id>.<fingerprint>`, the fingerprint an FNV-1a of
-  the node key, the direction and the sorted patterns and discriminators as
-  the caller sent them, and a cursor presented with any of them changed is
-  refused with `invalid_argument`. Binding the patterns rather than the
+  listing. The cursor is `<source_epoch>.<id>.<fingerprint>`, the
+  fingerprint an FNV-1a of the node key, the direction and the sorted
+  patterns and discriminators as the caller sent them, and a cursor
+  presented with any of them changed is refused with `invalid_argument`. A
+  cursor from another epoch is refused with `failed_precondition` and reason
+  `STALE_CURSOR` (§ Read Consistency Contract): its id names a row on an
+  abandoned timeline. The revision is not bound, as the projection's is not
+  (below): each page reports the revision it observed. Binding the patterns rather than the
   resolved type set means a type registered between pages does not void the
   cursor; its edges appear on the pages still to come. Each side of the node
   is one ordered statement over `(tenant_id, src_node_id | dst_node_id, id)`

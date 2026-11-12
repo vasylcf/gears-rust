@@ -298,15 +298,17 @@ fn edge_list_route(router: Router, openapi: &dyn OpenApiRegistry) -> Router {
             false,
             "`outgoing`, `incoming` or `either` (the default)",
         )
-        .query_param(
+        .query_param_array(
             "edge_type_pattern",
             false,
             "GTS pattern the edge type must match; repeat for several",
+            "string",
         )
-        .query_param(
+        .query_param_array(
             "discriminator",
             false,
             "Discriminator the edge must carry; repeat for several",
+            "string",
         )
         .query_param_typed(
             "limit",
@@ -674,5 +676,49 @@ mod tests {
         let router = write_routes(router, &registry);
         let router = read_routes(router, &registry);
         drop(query_routes(router, &registry));
+    }
+
+    /// Keeps the operations it is shown, so a test can read the spec.
+    #[derive(Default)]
+    struct Recorder(std::sync::Mutex<Vec<OperationSpec>>);
+
+    impl OpenApiRegistry for Recorder {
+        fn register_operation(&self, spec: &OperationSpec) {
+            self.0.lock().expect("not poisoned").push(spec.clone());
+        }
+
+        fn ensure_schema_raw(
+            &self,
+            name: &str,
+            _schemas: Vec<(
+                String,
+                utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
+            )>,
+        ) -> String {
+            name.to_owned()
+        }
+
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
+        }
+    }
+
+    /// The edge listing's repeatable filters are declared as arrays, the
+    /// `?key=a&key=b` encoding its handler decodes; declared as plain strings,
+    /// a client generated from the spec could send only one value.
+    #[test]
+    fn the_edge_listing_declares_its_repeatable_filters_as_arrays() {
+        let recorder = Recorder::default();
+        drop(edge_list_route(Router::new(), &recorder));
+        let specs = recorder.0.lock().expect("not poisoned");
+        let spec = specs.first().expect("the route registers");
+        for name in ["edge_type_pattern", "discriminator"] {
+            let param = spec
+                .params
+                .iter()
+                .find(|param| param.name == name)
+                .unwrap_or_else(|| panic!("`{name}` is declared"));
+            assert!(param.array, "`{name}` repeats");
+        }
     }
 }

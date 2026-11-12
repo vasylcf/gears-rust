@@ -909,11 +909,12 @@ impl GraphServices {
             &request.edge_type_patterns,
             &request.discriminators,
         );
-        let after = request
+        let position = request
             .cursor
             .as_deref()
             .map(|cursor| admission::edge_cursor_position(cursor, &identity))
             .transpose()?;
+        let after = position.map(|(_, after)| after);
         let edge_types = self
             .resolve_patterns(&auth, &request.edge_type_patterns)
             .await?;
@@ -931,11 +932,29 @@ impl GraphServices {
                 },
             )
             .await?;
+        // A cursor carries the epoch it was minted on (DESIGN § Read
+        // Consistency Contract): a position on an abandoned timeline names an
+        // id the restored store may have given to another edge. The revision
+        // is not bound -- the built-in store cannot serve an older one, and a
+        // listing that failed on every write would never finish under ingest
+        // -- so each page reports the revision it observed instead.
+        if let Some((epoch, _)) = position
+            && epoch != page.revision.source_epoch
+        {
+            return Err(DomainError::StaleCursor {
+                message: format!(
+                    "the cursor was minted on source epoch {epoch} and the store is on epoch {}; \
+                     start the listing again without a cursor",
+                    page.revision.source_epoch
+                ),
+            });
+        }
+        let epoch = page.revision.source_epoch;
         Ok(Page {
             items: page.items,
             next_cursor: page
                 .next_after
-                .map(|after| admission::edge_cursor(after, &identity)),
+                .map(|after| admission::edge_cursor(epoch, after, &identity)),
             revision: page.revision,
         })
     }

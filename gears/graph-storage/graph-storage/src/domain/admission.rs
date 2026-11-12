@@ -660,22 +660,32 @@ pub fn edge_listing_identity(
 /// The cursor that continues an edge listing after the edge with storage id
 /// `after`.
 #[must_use]
-pub fn edge_cursor(after: i64, identity: &str) -> String {
-    format!("{after}.{identity}")
+pub fn edge_cursor(epoch: i64, after: i64, identity: &str) -> String {
+    format!("{epoch}.{after}.{identity}")
 }
 
-/// The storage id an edge-listing cursor continues after.
+/// The `source_epoch` an edge-listing cursor was minted on and the storage
+/// id it continues after.
+///
+/// The epoch is checked against the page the store answers, not here: a
+/// cursor from an abandoned timeline is a stale cursor, not a malformed one.
 ///
 /// # Errors
 ///
 /// [`DomainError::InvalidArgument`] when the cursor is not one this listing
 /// minted: malformed, or minted for another node, direction or filter.
-pub fn edge_cursor_position(cursor: &str, identity: &str) -> Result<i64, DomainError> {
-    let parsed = cursor
-        .split_once('.')
-        .and_then(|(after, bound)| Some((after.parse::<i64>().ok()?, bound)));
+pub fn edge_cursor_position(cursor: &str, identity: &str) -> Result<(i64, i64), DomainError> {
+    let mut parts = cursor.splitn(3, '.');
+    let parsed = match (parts.next(), parts.next(), parts.next()) {
+        (Some(epoch), Some(after), Some(bound)) => epoch
+            .parse::<i64>()
+            .ok()
+            .zip(after.parse::<i64>().ok())
+            .map(|(epoch, after)| (epoch, after, bound)),
+        _ => None,
+    };
     match parsed {
-        Some((after, bound)) if bound == identity && after >= 0 => Ok(after),
+        Some((epoch, after, bound)) if bound == identity && after >= 0 => Ok((epoch, after)),
         Some(_) => Err(DomainError::invalid(
             "the cursor was minted by another edge listing; send the same node_key, \
              direction, edge_type_pattern and discriminator it was minted with, or \

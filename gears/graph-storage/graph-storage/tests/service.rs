@@ -3402,3 +3402,39 @@ async fn the_edge_listing_admits_its_filters_as_traversal_does() {
         );
     }
 }
+
+/// A cursor carries the source epoch it was minted on; one from another
+/// epoch -- a timeline a restore abandoned -- is refused as stale rather than
+/// resumed at an id the restored store may have given to another edge.
+#[tokio::test]
+async fn an_edge_cursor_from_another_epoch_is_stale() {
+    let harness = Harness::allowed();
+    seed_weighted_star(&harness, 3, 0).await;
+    let ctx = harness.ctx();
+    let first = harness
+        .services
+        .list_node_edges(&ctx, hub_edges(Some(1), None))
+        .await
+        .expect("the page answers");
+    let minted = first.next_cursor.expect("more than one page");
+    let (epoch, rest) = minted.split_once('.').expect("an epoch first");
+    let epoch: i64 = epoch.parse().expect("a number");
+    assert_eq!(
+        epoch, first.revision.source_epoch,
+        "the epoch it was minted on"
+    );
+    let elsewhere = format!("{}.{rest}", epoch + 1);
+    let refused = harness
+        .services
+        .list_node_edges(&ctx, hub_edges(Some(1), Some(elsewhere)))
+        .await;
+    assert!(
+        matches!(refused, Err(DomainError::StaleCursor { .. })),
+        "{refused:?}"
+    );
+    harness
+        .services
+        .list_node_edges(&ctx, hub_edges(Some(1), Some(minted)))
+        .await
+        .expect("the cursor from this epoch continues");
+}
