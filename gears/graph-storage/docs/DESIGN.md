@@ -2343,7 +2343,13 @@ still lets a retry erase a later node that was itself soft-deleted in
 between; `expected_created_at` (`?expected_created_at=`) closes it, binding
 the purge to the node created at that instant -- the envelope's
 `created_at`, set at insert and never changed -- and refusing any other node
-under the key with `409`, live or tombstoned. Random keys need neither. An edge another batch
+under the key with `409`, live or tombstoned. It compares timestamps at the
+store's precision, taken from the inserting process's clock, and is not a
+unique instance identity: two nodes under one key are separated by a purge,
+so they match only if a clock ran backwards between them by exactly their
+distance. An identity that cannot repeat, for delete and purge alike, is
+tracked in [#5944](https://github.com/constructorfabric/gears-rust/issues/5944).
+Random keys need neither. An edge another batch
 attaches between the two statements makes the node delete fail on the foreign
 key, a conflict the caller retries. Purge is the way to erase the tombstones
 deletes left: rule 4's key comes back with it, and rule 5's index entries go

@@ -164,7 +164,8 @@ Each is the shipped behaviour, with the contract that fixes it.
   safe only while the key is not written again in between; where keys are
   reused, purge with `?expected_created_at=<envelope.created_at>`, which
   answers `409` for any other node under the key, live or tombstoned
-  (`?only_tombstoned=true` refuses a live node only). A scope replacement
+  (`?only_tombstoned=true` refuses a live node only). The precondition
+  compares creation timestamps, not a unique instance id (#5944). A scope replacement
   removes tombstoned members as well as live ones. The gear removes rows;
   dead tuples, WAL and backups follow the deployment's retention.
 - **Adjacency on a node read is bounded per direction** by
