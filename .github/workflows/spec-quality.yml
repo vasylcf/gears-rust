@@ -5,9 +5,11 @@
 # Demo PRs target `spec-quality-demo`; a pull_request run takes the workflow from the PR's merge
 # ref, which has it from the base.
 #
-# Both jobs run on the self-hosted runner on the demo server (label `spec-quality`): the specq
-# code (vasylcf/neurosymbolic, private) is synced to ~/ns-demo/specq-src there, and LiteLLM,
-# the local models and graph-storage listen on 127.0.0.1. No inbound port; the runner pulls jobs.
+# The jobs run on a self-hosted runner with the label `spec-quality` (pm3, or the home server):
+# the specq code (vasylcf/neurosymbolic, private) is synced to $NS_HOME/specq-src there, and
+# LiteLLM, the local models and graph-storage listen on 127.0.0.1. No inbound port; the runner
+# pulls jobs. Each step starts with `NS_HOME=${NS_HOME:-$HOME/ns-demo}`; the runner's own .env
+# may set NS_PY (default python3): on pm3 the deploy/pm3/py wrapper, the host Python lacks numpy.
 #
 #   gate    deterministic rules, base…head; fails the check on a new blocking finding
 #   review  the same plus the model checks (advisory); review threads and a summary comment
@@ -39,8 +41,6 @@ env:
   GEARS: >-
     gears/system/oagw gears/graph-storage gears/settings-service gears/file-storage
     gears/llm-gateway gears/mini-chat
-  NS_SRC: /home/vashloc/ns-demo/specq-src
-  NS_RUN: /home/vashloc/ns-demo/specq-run
   BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
   HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
 
@@ -56,12 +56,13 @@ jobs:
           submodules: false
       - name: Deterministic rules, base…head
         run: |
-          cd "$NS_RUN"
-          PYTHONPATH="$NS_SRC" python3 -m specq --repo "$GITHUB_WORKSPACE" --base "$BASE" --head "$HEAD" \
+          NS_HOME=${NS_HOME:-$HOME/ns-demo}
+          cd "$NS_HOME/specq-run"
+          PYTHONPATH="$NS_HOME/specq-src" "${NS_PY:-python3}" -m specq --repo "$GITHUB_WORKSPACE" --base "$BASE" --head "$HEAD" \
             --md gate.md --json gate.json $GEARS
       - name: Summary
         if: always()
-        run: test -f "$NS_RUN/gate.md" && cat "$NS_RUN/gate.md" >> "$GITHUB_STEP_SUMMARY" || true
+        run: f="${NS_HOME:-$HOME/ns-demo}/specq-run/gate.md"; test -f "$f" && cat "$f" >> "$GITHUB_STEP_SUMMARY" || true
 
   review:
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
@@ -79,22 +80,25 @@ jobs:
           submodules: false
       - name: Keys from the server's deploy env (masked)
         run: |
-          k=$(grep '^LITELLM_MASTER_KEY=' /home/vashloc/ns-demo/deploy/.env | cut -d= -f2-)
-          o=$(grep '^OPENAI_KEY=' /home/vashloc/ns-demo/deploy/.env | cut -d= -f2-)
+          NS_HOME=${NS_HOME:-$HOME/ns-demo}
+          k=$(grep '^LITELLM_MASTER_KEY=' "$NS_HOME/deploy/.env" | cut -d= -f2-)
+          o=$(grep '^OPENAI_KEY=' "$NS_HOME/deploy/.env" | cut -d= -f2-)
           echo "::add-mask::$k"; echo "::add-mask::$o"
           { echo "NS_LLM_API_KEY=$k"; echo "NS_OPENAI_KEY=$o"; echo "NS_LLM_URL=http://127.0.0.1:4000"; } >> "$GITHUB_ENV"
       - name: Rules and model checks, base…head
         run: |
-          cd "$NS_RUN"
-          PYTHONPATH="$NS_SRC" python3 -m specq --repo "$GITHUB_WORKSPACE" --base "$BASE" --head "$HEAD" --model \
+          NS_HOME=${NS_HOME:-$HOME/ns-demo}
+          cd "$NS_HOME/specq-run"
+          PYTHONPATH="$NS_HOME/specq-src" "${NS_PY:-python3}" -m specq --repo "$GITHUB_WORKSPACE" --base "$BASE" --head "$HEAD" --model \
             --md review.md --json review.json --sarif review.sarif $GEARS || true
           test -f review.json
       - name: Review threads and summary comment
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cd "$NS_RUN"
-          PYTHONPATH="$NS_SRC" python3 -m specq.github --repo "$GITHUB_REPOSITORY" \
+          NS_HOME=${NS_HOME:-$HOME/ns-demo}
+          cd "$NS_HOME/specq-run"
+          PYTHONPATH="$NS_HOME/specq-src" "${NS_PY:-python3}" -m specq.github --repo "$GITHUB_REPOSITORY" \
             --pr "${{ github.event.pull_request.number }}" --findings review.json
           cat review.md >> "$GITHUB_STEP_SUMMARY"
 
@@ -112,14 +116,16 @@ jobs:
           submodules: false
       - name: Keys from the server's deploy env (masked)
         run: |
-          k=$(grep '^LITELLM_MASTER_KEY=' /home/vashloc/ns-demo/deploy/.env | cut -d= -f2-)
-          o=$(grep '^OPENAI_KEY=' /home/vashloc/ns-demo/deploy/.env | cut -d= -f2-)
+          NS_HOME=${NS_HOME:-$HOME/ns-demo}
+          k=$(grep '^LITELLM_MASTER_KEY=' "$NS_HOME/deploy/.env" | cut -d= -f2-)
+          o=$(grep '^OPENAI_KEY=' "$NS_HOME/deploy/.env" | cut -d= -f2-)
           echo "::add-mask::$k"; echo "::add-mask::$o"
           { echo "NS_LLM_API_KEY=$k"; echo "NS_OPENAI_KEY=$o"; echo "NS_LLM_URL=http://127.0.0.1:4000"; } >> "$GITHUB_ENV"
       - name: Findings at the branch (the push's own changes judged)
         run: |
-          cd "$NS_RUN"
-          PYTHONPATH="$NS_SRC" python3 -m specq --repo "$GITHUB_WORKSPACE" --base "$BASE" --head "$HEAD" --model \
+          NS_HOME=${NS_HOME:-$HOME/ns-demo}
+          cd "$NS_HOME/specq-run"
+          PYTHONPATH="$NS_HOME/specq-src" "${NS_PY:-python3}" -m specq --repo "$GITHUB_WORKSPACE" --base "$BASE" --head "$HEAD" --model \
             --sarif branch.sarif $GEARS || true
           cp branch.sarif "$GITHUB_WORKSPACE/specq.sarif"
       - uses: github/codeql-action/upload-sarif@v4
