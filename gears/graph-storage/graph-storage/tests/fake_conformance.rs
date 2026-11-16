@@ -769,3 +769,8 @@ async fn a_key_carried_twice_is_written_twice_in_request_order() {
     conformance::a_key_carried_twice_is_written_twice_in_request_order(&store(), Uuid::now_v7())
         .await;
 }
+
+#[tokio::test]
+async fn the_view_reads_report_whether_a_vector_is_stored() {
+    conformance::the_view_reads_report_whether_a_vector_is_stored(&store(), Uuid::now_v7()).await;
+}
