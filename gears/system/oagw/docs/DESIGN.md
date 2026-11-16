@@ -121,7 +121,7 @@ graph TB
 ```
 
 
-Configuration is read through on every request, see [ADR-0017](./ADR/0017-configuration-read-through.md); cache invalidation across replicas is described in [ADR: Cache Invalidation](./ADR/0020-cache-invalidation.md).
+Configuration is read through on every request, see [ADR-0017](./ADR/0017-configuration-read-through.md).
 
 ## 2. Principles & Constraints
 

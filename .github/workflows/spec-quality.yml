@@ -5,7 +5,10 @@
 # the local models and graph-storage listen on 127.0.0.1. No inbound port; the runner pulls jobs.
 #
 #   gate    deterministic rules, base…head; fails the check on a new blocking finding
-#   review  the same plus the model checks (advisory); review threads, a summary comment, SARIF
+#   review  the same plus the model checks (advisory); review threads and a summary comment
+#   index   on a push to main: warms the fact cache for the next PRs and uploads SARIF of the
+#           findings at main to code scanning (Security tab). Not on PRs: code scanning would
+#           comment on the same lines as the threads
 #
 # The fork is public: `review` runs only for branches of this repository, never for a PR from
 # another fork (its workflow file would run on the server). Also set Settings → Actions →
@@ -16,12 +19,15 @@ name: spec-quality
 on:
   pull_request:
     paths: ["**/*.md"]
+  push:
+    branches: [main]
+    paths: ["**/*.md"]
 
 permissions:
   contents: read
 
 concurrency:
-  group: spec-quality-${{ github.event.pull_request.number }}
+  group: spec-quality-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -30,16 +36,16 @@ env:
     gears/llm-gateway gears/mini-chat
   NS_SRC: /home/vashloc/ns-demo/specq-src
   NS_RUN: /home/vashloc/ns-demo/specq-run
-  BASE: ${{ github.event.pull_request.base.sha }}
-  HEAD: ${{ github.event.pull_request.head.sha }}
+  BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+  HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
 
 jobs:
   gate:
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, spec-quality]
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           submodules: false
@@ -53,15 +59,14 @@ jobs:
         run: test -f "$NS_RUN/gate.md" && cat "$NS_RUN/gate.md" >> "$GITHUB_STEP_SUMMARY" || true
 
   review:
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, spec-quality]
     timeout-minutes: 40
     permissions:
       contents: read
       pull-requests: write
-      security-events: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           submodules: false
@@ -85,9 +90,32 @@ jobs:
           PYTHONPATH="$NS_SRC" python3 -m specq.github --repo "$GITHUB_REPOSITORY" \
             --pr "${{ github.event.pull_request.number }}" --findings review.json
           cat review.md >> "$GITHUB_STEP_SUMMARY"
-      - name: Copy SARIF into the workspace
-        run: cp "$NS_RUN/review.sarif" "$GITHUB_WORKSPACE/specq.sarif"
-      - uses: github/codeql-action/upload-sarif@v3
+
+  index:
+    if: github.event_name == 'push'
+    runs-on: [self-hosted, spec-quality]
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          submodules: false
+      - name: Keys from the server's deploy env (masked)
+        run: |
+          k=$(grep '^LITELLM_MASTER_KEY=' /home/vashloc/ns-demo/deploy/.env | cut -d= -f2-)
+          o=$(grep '^OPENAI_KEY=' /home/vashloc/ns-demo/deploy/.env | cut -d= -f2-)
+          echo "::add-mask::$k"; echo "::add-mask::$o"
+          { echo "NS_LLM_API_KEY=$k"; echo "NS_OPENAI_KEY=$o"; echo "NS_LLM_URL=http://127.0.0.1:4000"; } >> "$GITHUB_ENV"
+      - name: Findings at main (the push's own changes judged)
+        run: |
+          cd "$NS_RUN"
+          PYTHONPATH="$NS_SRC" python3 -m specq --repo "$GITHUB_WORKSPACE" --base "$BASE" --head "$HEAD" --model \
+            --sarif main.sarif $GEARS || true
+          cp main.sarif "$GITHUB_WORKSPACE/specq.sarif"
+      - uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: specq.sarif
           category: specq
