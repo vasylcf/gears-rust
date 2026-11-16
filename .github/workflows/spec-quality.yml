@@ -1,0 +1,93 @@
+# Spec-quality check for the gears-rust fork (copy to .github/workflows/spec-quality.yml there).
+#
+# Both jobs run on the self-hosted runner on the demo server (label `spec-quality`): the specq
+# code (vasylcf/neurosymbolic, private) is synced to ~/ns-demo/specq-src there, and LiteLLM,
+# the local models and graph-storage listen on 127.0.0.1. No inbound port; the runner pulls jobs.
+#
+#   gate    deterministic rules, base…head; fails the check on a new blocking finding
+#   review  the same plus the model checks (advisory); review threads, a summary comment, SARIF
+#
+# The fork is public: `review` runs only for branches of this repository, never for a PR from
+# another fork (its workflow file would run on the server). Also set Settings → Actions →
+# General → "Require approval for all external contributors".
+
+name: spec-quality
+
+on:
+  pull_request:
+    paths: ["**/*.md"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spec-quality-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  GEARS: >-
+    gears/system/oagw gears/graph-storage gears/settings-service gears/file-storage
+    gears/llm-gateway gears/mini-chat
+  NS_SRC: /home/vashloc/ns-demo/specq-src
+  NS_RUN: /home/vashloc/ns-demo/specq-run
+  BASE: ${{ github.event.pull_request.base.sha }}
+  HEAD: ${{ github.event.pull_request.head.sha }}
+
+jobs:
+  gate:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, spec-quality]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+      - name: Deterministic rules, base…head
+        run: |
+          cd "$NS_RUN"
+          PYTHONPATH="$NS_SRC" python3 -m specq --repo "$GITHUB_WORKSPACE" --base "$BASE" --head "$HEAD" \
+            --md gate.md --json gate.json $GEARS
+      - name: Summary
+        if: always()
+        run: test -f "$NS_RUN/gate.md" && cat "$NS_RUN/gate.md" >> "$GITHUB_STEP_SUMMARY" || true
+
+  review:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, spec-quality]
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      pull-requests: write
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+      - name: Keys from the server's deploy env (masked)
+        run: |
+          k=$(grep '^LITELLM_MASTER_KEY=' /home/vashloc/ns-demo/deploy/.env | cut -d= -f2-)
+          o=$(grep '^OPENAI_KEY=' /home/vashloc/ns-demo/deploy/.env | cut -d= -f2-)
+          echo "::add-mask::$k"; echo "::add-mask::$o"
+          { echo "NS_LLM_API_KEY=$k"; echo "NS_OPENAI_KEY=$o"; echo "NS_LLM_URL=http://127.0.0.1:4000"; } >> "$GITHUB_ENV"
+      - name: Rules and model checks, base…head
+        run: |
+          cd "$NS_RUN"
+          PYTHONPATH="$NS_SRC" python3 -m specq --repo "$GITHUB_WORKSPACE" --base "$BASE" --head "$HEAD" --model \
+            --md review.md --json review.json --sarif review.sarif $GEARS || true
+          test -f review.json
+      - name: Review threads and summary comment
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd "$NS_RUN"
+          PYTHONPATH="$NS_SRC" python3 -m specq.github --repo "$GITHUB_REPOSITORY" \
+            --pr "${{ github.event.pull_request.number }}" --findings review.json
+          cat review.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Copy SARIF into the workspace
+        run: cp "$NS_RUN/review.sarif" "$GITHUB_WORKSPACE/specq.sarif"
+      - uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: specq.sarif
+          category: specq
