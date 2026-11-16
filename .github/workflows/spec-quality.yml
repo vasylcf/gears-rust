@@ -1,13 +1,18 @@
 # Spec-quality check for the gears-rust fork (copy to .github/workflows/spec-quality.yml there).
 #
+# It lives on the fork's branch `spec-quality-demo`, not on `main`: `main` stays a copy of
+# upstream, so Sync fork and task branches for PRs to constructorfabric/gears-rust are untouched.
+# Demo PRs target `spec-quality-demo`; a pull_request run takes the workflow from the PR's merge
+# ref, which has it from the base.
+#
 # Both jobs run on the self-hosted runner on the demo server (label `spec-quality`): the specq
 # code (vasylcf/neurosymbolic, private) is synced to ~/ns-demo/specq-src there, and LiteLLM,
 # the local models and graph-storage listen on 127.0.0.1. No inbound port; the runner pulls jobs.
 #
 #   gate    deterministic rules, base…head; fails the check on a new blocking finding
 #   review  the same plus the model checks (advisory); review threads and a summary comment
-#   index   on a push to main: warms the fact cache for the next PRs and uploads SARIF of the
-#           findings at main to code scanning (Security tab). Not on PRs: code scanning would
+#   index   on a push to spec-quality-demo: warms the fact cache for the next PRs and uploads SARIF of the
+#           findings at that branch to code scanning (Security tab). Not on PRs: code scanning would
 #           comment on the same lines as the threads
 #
 # The fork is public: `review` runs only for branches of this repository, never for a PR from
@@ -20,7 +25,7 @@ on:
   pull_request:
     paths: ["**/*.md"]
   push:
-    branches: [main]
+    branches: [spec-quality-demo]
     paths: ["**/*.md"]
 
 permissions:
@@ -111,12 +116,12 @@ jobs:
           o=$(grep '^OPENAI_KEY=' /home/vashloc/ns-demo/deploy/.env | cut -d= -f2-)
           echo "::add-mask::$k"; echo "::add-mask::$o"
           { echo "NS_LLM_API_KEY=$k"; echo "NS_OPENAI_KEY=$o"; echo "NS_LLM_URL=http://127.0.0.1:4000"; } >> "$GITHUB_ENV"
-      - name: Findings at main (the push's own changes judged)
+      - name: Findings at the branch (the push's own changes judged)
         run: |
           cd "$NS_RUN"
           PYTHONPATH="$NS_SRC" python3 -m specq --repo "$GITHUB_WORKSPACE" --base "$BASE" --head "$HEAD" --model \
-            --sarif main.sarif $GEARS || true
-          cp main.sarif "$GITHUB_WORKSPACE/specq.sarif"
+            --sarif branch.sarif $GEARS || true
+          cp branch.sarif "$GITHUB_WORKSPACE/specq.sarif"
       - uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: specq.sarif
