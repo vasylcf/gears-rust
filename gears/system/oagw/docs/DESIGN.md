@@ -120,6 +120,9 @@ graph TB
     CP -->|types| TypesRegistry[types_registry]
 ```
 
+
+Configuration is read through on every request, see [ADR-0017](./ADR/0017-configuration-read-through.md).
+
 ## 2. Principles & Constraints
 
 ### 2.1 Design Principles
