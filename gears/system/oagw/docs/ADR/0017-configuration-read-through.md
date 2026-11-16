@@ -16,4 +16,4 @@ layers coherent across replicas costs more than the repository reads it would sa
 ## Decision Outcome
 
 OAGW reads upstream and route configuration from the repositories on every proxied request.
-There is no configuration cache. Endpoint connection pools stay cached.
+There is no configuration cache of any kind. Endpoint connection pools stay cached.

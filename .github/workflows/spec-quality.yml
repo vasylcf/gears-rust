@@ -63,7 +63,9 @@ jobs:
     runs-on: [self-hosted, spec-quality]
     timeout-minutes: 40
     permissions:
-      contents: read
+      # contents: write only for resolveReviewThread (GraphQL refuses it with pull-requests alone);
+      # this job runs our code from the server, never code from the PR
+      contents: write
       pull-requests: write
     steps:
       - uses: actions/checkout@v7
