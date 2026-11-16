@@ -15,7 +15,7 @@
 #   review  the same plus the model checks (advisory); review threads and a summary comment
 #   pages   review and index also publish the graph view to GitHub Pages (gh-pages): pr/<N>/ for a PR,
 #           linked from every thread, and the branch's map at the root
-#   index   on a push to spec-quality-demo: warms the fact cache for the next PRs and uploads SARIF of the
+#   index   on a push to spec-quality-demo (or run by hand): warms the fact cache for the next PRs and uploads SARIF of the
 #           findings at that branch to code scanning (Security tab). Not on PRs: code scanning would
 #           comment on the same lines as the threads
 #
@@ -31,6 +31,7 @@ on:
   push:
     branches: [spec-quality-demo]
     paths: ["**/*.md"]
+  workflow_dispatch:        # rebuild the branch map (index) by hand
 
 permissions:
   contents: read
@@ -43,7 +44,7 @@ env:
   GEARS: >-
     gears/system/oagw gears/graph-storage gears/settings-service gears/file-storage
     gears/llm-gateway gears/mini-chat
-  BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+  BASE: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
   HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
 
 jobs:
@@ -126,7 +127,7 @@ jobs:
           cat review.md >> "$GITHUB_STEP_SUMMARY"
 
   index:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, spec-quality]
     timeout-minutes: 40
     permissions:
@@ -161,6 +162,8 @@ jobs:
           mkdir -p pages/branch
           PYTHONPATH="$NS_HOME/specq-src" "${NS_PY:-python3}" -m specq.view --repo "$GITHUB_WORKSPACE" --rev "$HEAD" \
             --findings branch.json --all --title "Spec graph, ${GITHUB_REF_NAME}" \
+            --labelled "$NS_HOME/specq-src/eval/judge/contradiction-verified.json" \
+            --labelled-rev 1388209b62e576f6d74c026343495954a79a279d \
             --repo-url "https://github.com/$GITHUB_REPOSITORY" --out pages/branch/index.html $GEARS
           "$NS_HOME/specq-src/deploy/gears-rust/publish-pages.sh" pages/branch . "${GITHUB_REF_NAME} at ${HEAD:0:12}"
       - uses: github/codeql-action/upload-sarif@v4
