@@ -41,9 +41,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  # graph-storage and settings-service have no documents on upstream since a92339a
   GEARS: >-
-    gears/system/oagw gears/graph-storage gears/settings-service gears/file-storage
-    gears/llm-gateway gears/mini-chat
+    gears/system/oagw gears/file-storage gears/llm-gateway gears/mini-chat
   BASE: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
   HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
 
@@ -162,6 +162,7 @@ jobs:
           mkdir -p pages/branch
           PYTHONPATH="$NS_HOME/specq-src" "${NS_PY:-python3}" -m specq.view --repo "$GITHUB_WORKSPACE" --rev "$HEAD" \
             --findings branch.json --all --title "Spec graph, ${GITHUB_REF_NAME}" \
+            --judged "$NS_HOME/specq-src/eval/judge/contradiction-fork-c0763c6.json" \
             --labelled "$NS_HOME/specq-src/eval/judge/contradiction-verified.json" \
             --labelled-rev 1388209b62e576f6d74c026343495954a79a279d \
             --repo-url "https://github.com/$GITHUB_REPOSITORY" --out pages/branch/index.html $GEARS
