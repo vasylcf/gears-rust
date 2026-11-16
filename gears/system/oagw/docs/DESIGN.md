@@ -120,6 +120,9 @@ graph TB
     CP -->|types| TypesRegistry[types_registry]
 ```
 
+
+How replicas invalidate cached endpoint pools is described in [ADR: Cache Invalidation](./ADR/0020-cache-invalidation.md).
+
 ## 2. Principles & Constraints
 
 ### 2.1 Design Principles
