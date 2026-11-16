@@ -13,6 +13,8 @@
 #
 #   gate    deterministic rules, base…head; fails the check on a new blocking finding
 #   review  the same plus the model checks (advisory); review threads and a summary comment
+#   pages   review and index also publish the graph view to GitHub Pages (gh-pages): pr/<N>/ for a PR,
+#           linked from every thread, and the branch's map at the root
 #   index   on a push to spec-quality-demo: warms the fact cache for the next PRs and uploads SARIF of the
 #           findings at that branch to code scanning (Security tab). Not on PRs: code scanning would
 #           comment on the same lines as the threads
@@ -92,14 +94,35 @@ jobs:
           PYTHONPATH="$NS_HOME/specq-src" "${NS_PY:-python3}" -m specq --repo "$GITHUB_WORKSPACE" --base "$BASE" --head "$HEAD" --model \
             --md review.md --json review.json --sarif review.sarif $GEARS || true
           test -f review.json
-      - name: Review threads and summary comment
+      - name: Graph page for this PR (GitHub Pages)
+        id: page
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
         run: |
           NS_HOME=${NS_HOME:-$HOME/ns-demo}
           cd "$NS_HOME/specq-run"
+          mkdir -p "pages/pr-$PR"
+          PYTHONPATH="$NS_HOME/specq-src" "${NS_PY:-python3}" -m specq.view --repo "$GITHUB_WORKSPACE" --rev "$HEAD" \
+            --findings review.json --pr "$PR" --title "Spec graph, PR #$PR" \
+            --repo-url "https://github.com/$GITHUB_REPOSITORY" --out "pages/pr-$PR/index.html" $GEARS
+          "$NS_HOME/specq-src/deploy/gears-rust/publish-pages.sh" "pages/pr-$PR" "pr/$PR" "PR #$PR at ${HEAD:0:12}"
+      - name: Review threads and summary comment
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          PAGE_OK: ${{ steps.page.outcome == 'success' }}
+        run: |
+          NS_HOME=${NS_HOME:-$HOME/ns-demo}
+          cd "$NS_HOME/specq-run"
+          page=()
+          if [ "$PAGE_OK" = true ]; then
+            base="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/pr/$PR/"
+            page=(--view-url "${base}#f-{fingerprint}" --page-url "${base}#pr")
+          fi
           PYTHONPATH="$NS_HOME/specq-src" "${NS_PY:-python3}" -m specq.github --repo "$GITHUB_REPOSITORY" \
-            --pr "${{ github.event.pull_request.number }}" --findings review.json
+            --pr "$PR" --findings review.json "${page[@]}"
           cat review.md >> "$GITHUB_STEP_SUMMARY"
 
   index:
@@ -107,7 +130,7 @@ jobs:
     runs-on: [self-hosted, spec-quality]
     timeout-minutes: 40
     permissions:
-      contents: read
+      contents: write          # the map page goes to gh-pages
       security-events: write
     steps:
       - uses: actions/checkout@v7
@@ -126,8 +149,20 @@ jobs:
           NS_HOME=${NS_HOME:-$HOME/ns-demo}
           cd "$NS_HOME/specq-run"
           PYTHONPATH="$NS_HOME/specq-src" "${NS_PY:-python3}" -m specq --repo "$GITHUB_WORKSPACE" --base "$BASE" --head "$HEAD" --model \
-            --sarif branch.sarif $GEARS || true
+            --sarif branch.sarif --json branch.json $GEARS || true
           cp branch.sarif "$GITHUB_WORKSPACE/specq.sarif"
+      - name: Map page of the branch (GitHub Pages)
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NS_HOME=${NS_HOME:-$HOME/ns-demo}
+          cd "$NS_HOME/specq-run"
+          mkdir -p pages/branch
+          PYTHONPATH="$NS_HOME/specq-src" "${NS_PY:-python3}" -m specq.view --repo "$GITHUB_WORKSPACE" --rev "$HEAD" \
+            --findings branch.json --all --title "Spec graph, ${GITHUB_REF_NAME}" \
+            --repo-url "https://github.com/$GITHUB_REPOSITORY" --out pages/branch/index.html $GEARS
+          "$NS_HOME/specq-src/deploy/gears-rust/publish-pages.sh" pages/branch . "${GITHUB_REF_NAME} at ${HEAD:0:12}"
       - uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: specq.sarif
