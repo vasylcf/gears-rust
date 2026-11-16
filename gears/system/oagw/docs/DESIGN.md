@@ -120,6 +120,9 @@ graph TB
     CP -->|types| TypesRegistry[types_registry]
 ```
 
+
+Configuration is read through on every request, see [ADR-0017](./ADR/0017-configuration-read-through.md); cache invalidation across replicas is described in [ADR: Cache Invalidation](./ADR/0020-cache-invalidation.md).
+
 ## 2. Principles & Constraints
 
 ### 2.1 Design Principles
@@ -168,7 +171,7 @@ Multi-SQL backend portability: PostgreSQL, MySQL, SQLite. `toolkit-db` requireme
 
 **ID**: `cpt-cf-oagw-constraint-body-limit`
 
-Body size hard limit: 100MB. Prevent resource exhaustion; reject before buffering.
+Body size hard limit: 250MB. Prevent resource exhaustion; reject before buffering.
 
 **ID**: `cpt-cf-oagw-constraint-https-only`
 
