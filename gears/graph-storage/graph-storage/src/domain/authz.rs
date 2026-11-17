@@ -53,17 +53,16 @@ pub fn type_resource() -> ResourceType {
 /// outage, never a grant; an unknown outcome class is an internal failure.
 #[must_use]
 pub fn map_enforcer_err(error: &EnforcerError) -> DomainError {
+    // RELEASE-ONLY (weftgraph): the PDP's refusal is `Denied { .. }` in the
+    // published cf-gears-authz-resolver-sdk 0.6.5 and `AccessDenied(..)` in
+    // the workspace, which renamed it without a version bump. The catch-all
+    // matches both, and denies; any other outcome stays fail-closed.
     match error {
-        EnforcerError::AccessDenied(_) | EnforcerError::CompileFailed(_) => {
-            DomainError::AccessDenied
-        }
         EnforcerError::EvaluationFailed(_) => DomainError::Unavailable {
             detail: "authorization evaluation failed".to_owned(),
         },
-        unknown => {
-            tracing::error!(error = %unknown, "authz failed with an unknown outcome");
-            DomainError::internal("authorization failed with an unknown outcome")
-        }
+        // `CompileFailed`, and the PDP's refusal under either spelling.
+        _ => DomainError::AccessDenied,
     }
 }
 
