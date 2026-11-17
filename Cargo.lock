@@ -14506,7 +14506,7 @@ checksum = "d4ca08e5ef825b65b056d9efbd95c8750683f0a6d0466d02e96dc2e4e360f3d2"
 
 [[package]]
 name = "weftgraph"
-version = "0.4.0-rc.2"
+version = "0.4.0-rc.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -14556,7 +14556,7 @@ dependencies = [
 
 [[package]]
 name = "weftgraph-onnx-embedding-plugin"
-version = "0.4.0-rc.2"
+version = "0.4.0-rc.3"
 dependencies = [
  "async-trait",
  "cf-gears-toolkit-onnx-runtime",
@@ -14573,7 +14573,7 @@ dependencies = [
 
 [[package]]
 name = "weftgraph-remote-embedding-plugin"
-version = "0.4.0-rc.2"
+version = "0.4.0-rc.3"
 dependencies = [
  "async-trait",
  "reqwest",
@@ -14591,7 +14591,7 @@ dependencies = [
 
 [[package]]
 name = "weftgraph-sdk"
-version = "0.4.0-rc.2"
+version = "0.4.0-rc.3"
 dependencies = [
  "async-trait",
  "cf-gears-toolkit-canonical-errors",

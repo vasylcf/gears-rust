@@ -345,7 +345,7 @@ fn snapshot_data(tenant: &Tenant) -> TenantData {
 /// belongs to a real store's statement, and a fake that pretended otherwise
 /// would let a scoping bug pass here and fail in production.
 fn scope_admits(scope: &toolkit_security::AccessScope, tenant: Uuid) -> bool {
-    if scope.matches_nothing() {
+    if scope.is_deny_all() {
         return false;
     }
     if scope.is_unconstrained() {
