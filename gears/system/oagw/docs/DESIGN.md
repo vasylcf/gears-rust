@@ -168,7 +168,7 @@ Multi-SQL backend portability: PostgreSQL, MySQL, SQLite. `toolkit-db` requireme
 
 **ID**: `cpt-cf-oagw-constraint-body-limit`
 
-Body size hard limit: 100MB. Prevent resource exhaustion; reject before buffering.
+Body size hard limit: 250MB. Prevent resource exhaustion; reject before buffering.
 
 **ID**: `cpt-cf-oagw-constraint-https-only`
 
