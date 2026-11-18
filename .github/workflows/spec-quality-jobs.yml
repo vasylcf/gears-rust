@@ -12,6 +12,11 @@
 # Outputs also stay on the stand in ~/ns-demo/specq-run/jobs/, so a later contradictions run can
 # continue an earlier one (`skip_judged`: its run id) without paying for the same pairs twice.
 
+# In a fork, keep only spec-quality, spec-quality-jobs and pages-build-deployment enabled. GitHub
+# disables every workflow of a fork whose inherited upstream workflows (CI, e2e, CodeQL, …) keep
+# running on its events ("to reduce the amount of compute that is wasted"); it did so to
+# vasylcf/gears-rust on 2026-11-16 until they were disabled (`gh workflow disable`).
+
 name: spec-quality-jobs
 
 on:
