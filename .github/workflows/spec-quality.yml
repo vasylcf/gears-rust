@@ -13,6 +13,7 @@
 #
 #   gate    deterministic rules, base…head; fails the check on a new blocking finding
 #   review  the same plus the model checks (advisory); review threads and a summary comment
+#   graph   index also stores the branch's findings in graph-storage (specq.store), for MCP
 #   pages   review and index also publish the graph view to GitHub Pages (gh-pages): pr/<N>/ for a PR,
 #           linked from every thread, and the branch's map at the root
 #   index   on a push to spec-quality-demo (or run by hand): warms the fact cache for the next PRs and uploads SARIF of the
@@ -172,6 +173,14 @@ jobs:
             $MAP_EXTRA \
             --repo-url "https://github.com/$GITHUB_REPOSITORY" --out pages/branch/index.html $SCOPE
           "$NS_HOME/specq-src/deploy/gears-rust/publish-pages.sh" pages/branch . "${GITHUB_REF_NAME} at ${HEAD:0:12}"
+      - name: Findings into the graph (graph-storage on the stand)
+        continue-on-error: true
+        run: |
+          NS_HOME=${NS_HOME:-$HOME/ns-demo}
+          cd "$NS_HOME/specq-run"
+          PYTHONPATH="$NS_HOME/specq-src" "${NS_PY:-python3}" -m specq.store --repo "$GITHUB_WORKSPACE" --rev "$HEAD" \
+            --findings branch.json --all $MAP_EXTRA --label "${GITHUB_REPOSITORY#*/}" \
+            --view-url "https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/" $SCOPE
       - uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: specq.sarif
