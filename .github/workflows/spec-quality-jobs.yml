@@ -1,0 +1,131 @@
+# Long spec-quality jobs, run by hand or through MCP (copy to .github/workflows/ of each fork).
+#
+#   index           the documents -> graph-storage: types, structure (ingest push), facts
+#   contradictions  the full contradiction judge (triage order, --cap, refutation); its confirmed
+#                   conflicts go to the graph as findings (label <repo>/contradictions)
+#   realization     the realization judge -> judged_realizes edges   (gear layouts only)
+#   status          the build-status judge -> judged_built edges     (gear layouts only)
+#
+# The same runner and stand as spec-quality.yml. The repository's scope comes from the repository
+# variable SPECQ_SCOPE (gear directories, or `--docs-root docs --name LABEL .`). Every job writes
+# result.json (counts, cost, where the output is) as an artifact; MCP's job_status reads it.
+# Outputs also stay on the stand in ~/ns-demo/specq-run/jobs/, so a later contradictions run can
+# continue an earlier one (`skip_judged`: its run id) without paying for the same pairs twice.
+
+name: spec-quality-jobs
+
+on:
+  # GitHub dispatches only a workflow it has seen run; this file lives on the fork's demo branch,
+  # not the default one, so a push of the file itself registers it (the job skips that run)
+  push:
+    branches: [spec-quality-demo]
+    paths: [".github/workflows/spec-quality-jobs.yml"]
+  workflow_dispatch:
+    inputs:
+      job:
+        type: choice
+        options: [index, contradictions, realization, status]
+        required: true
+      cap:
+        description: "contradictions: candidates judged per gear (or per docs root)"
+        default: "150"
+      skip_judged:
+        description: "contradictions: run id of an earlier run whose pairs are not judged again"
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spec-quality-jobs-${{ inputs.job }}
+  cancel-in-progress: false
+
+env:
+  SCOPE: ${{ vars.SPECQ_SCOPE }}
+  HEAD: ${{ github.sha }}
+  JOB: ${{ inputs.job }}
+  CAP: ${{ inputs.cap }}
+  SKIP: ${{ inputs.skip_judged }}
+
+jobs:
+  run:
+    if: github.event_name == 'workflow_dispatch' && github.repository_owner == 'vasylcf'
+    runs-on: [self-hosted, spec-quality]
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          submodules: false
+      - name: Keys from the server's deploy env (masked)
+        run: |
+          NS_HOME=${NS_HOME:-$HOME/ns-demo}
+          k=$(grep '^LITELLM_MASTER_KEY=' "$NS_HOME/deploy/.env" | cut -d= -f2-)
+          o=$(grep '^OPENAI_KEY=' "$NS_HOME/deploy/.env" | cut -d= -f2-)
+          echo "::add-mask::$k"; echo "::add-mask::$o"
+          { echo "NS_LLM_API_KEY=$k"; echo "NS_OPENAI_KEY=$o"; echo "NS_LLM_URL=http://127.0.0.1:4000";
+            echo "NS_GRAPH_URL=http://127.0.0.1:8090"; } >> "$GITHUB_ENV"
+      - name: Run the job
+        run: |
+          NS_HOME=${NS_HOME:-$HOME/ns-demo}
+          cd "$NS_HOME/specq-run" && mkdir -p jobs
+          export PYTHONPATH="$NS_HOME/specq-src"
+          PY="${NS_PY:-python3}"
+          LABEL="${GITHUB_REPOSITORY#*/}"
+          OUT="jobs/${GITHUB_RUN_ID}-${JOB}.json"
+          test -n "$SCOPE" || { echo "::error::set the repository variable SPECQ_SCOPE"; exit 1; }
+          case "$JOB" in
+            index)
+              "$PY" -m ingest types --update | grep -v unchanged || true
+              "$PY" -m ingest push --repo "$GITHUB_WORKSPACE" --rev "$HEAD" $SCOPE | tee jobs/push.log
+              "$PY" -m ingest.facts --repo "$GITHUB_WORKSPACE" --rev "$HEAD" $SCOPE | tee jobs/facts.log
+              python3 -c "import json,sys; print(json.dumps({'job':'index','revision':'$HEAD','push':open('jobs/push.log').read()[-1500:],'facts':open('jobs/facts.log').read()[-800:]}))" > "$OUT"
+              ;;
+            contradictions)
+              skip=(); [ -n "$SKIP" ] && skip=(--skip-judged "jobs/${SKIP}-contradictions.json")
+              "$PY" -m judge.contradiction --repo "$GITHUB_WORKSPACE" --rev "$HEAD" --out "$OUT" \
+                --cap "$CAP" --triage-share 1.0 --refute "${skip[@]}" $SCOPE
+              # the confirmed conflicts into the graph, beside the branch's findings
+              "$PY" -m specq.store --repo "$GITHUB_WORKSPACE" --rev "$HEAD" --judged "$OUT" \
+                --label "$LABEL/contradictions" \
+                --view-url "https://${GITHUB_REPOSITORY_OWNER}.github.io/${LABEL}/" $SCOPE | tee jobs/store.log
+              ;;
+            realization|status)
+              case " $SCOPE " in *" --docs-root "*)
+                echo "::error::the $JOB judge reads gear layouts (gears/<gear>/docs, cpt-cf-<gear> ids) only"; exit 1;; esac
+              if [ "$JOB" = realization ]; then "$PY" -m judge --repo "$GITHUB_WORKSPACE" --rev "$HEAD" --out "$OUT" $SCOPE
+              else "$PY" -m judge.status --repo "$GITHUB_WORKSPACE" --rev "$HEAD" --out "$OUT" $SCOPE; fi
+              cp "$OUT" "jobs/latest-${LABEL}-${JOB}.json"
+              # analysis edges: both judges at once, so one does not drop the other's (ingest.analysis
+              # replaces every analysis edge of a gear)
+              args=()
+              [ -f "jobs/latest-${LABEL}-realization.json" ] && args+=(--realization "jobs/latest-${LABEL}-realization.json")
+              [ -f "jobs/latest-${LABEL}-status.json" ] && args+=(--status "jobs/latest-${LABEL}-status.json")
+              "$PY" -m ingest.analysis "${args[@]}" $SCOPE | tee jobs/analysis.log
+              ;;
+          esac
+          python3 - "$OUT" "$JOB" > result.json <<'PY'
+          import json, sys
+          out, job = sys.argv[1], sys.argv[2]
+          d = json.load(open(out))
+          r = {"job": job, "output": out, "revision": d.get("revision")}
+          if "judgments" in d:
+              js = d["judgments"]
+              r["judged"] = len(js)
+              r["confirmed"] = sum(1 for j in js if j.get("accepted") and (j.get("conflict") or j.get("realized") == "yes" or j.get("built") in ("yes", "partial", "no")))
+          r["metrics"] = {k: v for k, v in (d.get("metrics") or {}).items() if not isinstance(v, (list, dict))}
+          r["extraction"] = {g: {k: e.get(k) for k in ("documents", "facts", "list_cost", "pool", "candidates")}
+                             for g, e in (d.get("extraction") or {}).items() if isinstance(e, dict)}
+          for k in ("push", "facts"):
+              if k in d:
+                  r[k] = d[k]
+          print(json.dumps(r, indent=1))
+          PY
+          cp result.json "$GITHUB_WORKSPACE/result.json"
+          cat result.json >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: result
+          path: result.json
+          if-no-files-found: ignore
